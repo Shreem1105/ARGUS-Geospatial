@@ -48,3 +48,6 @@ data/cache/
 data/prepared/
 data/analyses/
 
+
+# Celery local runtime state
+celerybeat-schedule*

@@ -13,10 +13,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.analysis_job import AnalysisJob
     from app.models.change_analysis import ChangeAnalysis
     from app.models.change_event import ChangeEvent
     from app.models.environmental_feature import EnvironmentalFeature
     from app.models.monitor_land_cover_source import MonitorLandCoverSource
+    from app.models.monitor_run import MonitorRun
+    from app.models.monitor_schedule import MonitorSchedule
     from app.models.population_feature import PopulationFeature
     from app.models.context_feature import ContextFeature
     from app.models.prepared_observation import PreparedObservation
@@ -93,4 +96,17 @@ class Monitor(Base):
     land_cover_sources: Mapped[list[MonitorLandCoverSource]] = relationship(
         back_populates="monitor",
         passive_deletes=True,
+    )
+    analysis_jobs: Mapped[list[AnalysisJob]] = relationship(
+        back_populates="monitor",
+        passive_deletes=True,
+    )
+    monitor_runs: Mapped[list[MonitorRun]] = relationship(
+        back_populates="monitor",
+        passive_deletes=True,
+    )
+    monitor_schedule: Mapped[MonitorSchedule | None] = relationship(
+        back_populates="monitor",
+        passive_deletes=True,
+        uselist=False,
     )

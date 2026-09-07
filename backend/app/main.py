@@ -1,11 +1,13 @@
 from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
 
+from app.api.routes.jobs import router as jobs_router
 from app.api.routes.monitors import router as monitors_router
 from app.db.session import ReadinessCheckError, check_database_readiness
 
 app = FastAPI(title="ARGUS API")
 app.include_router(monitors_router)
+app.include_router(jobs_router)
 
 
 @app.get("/")

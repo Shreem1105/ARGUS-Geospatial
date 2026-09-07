@@ -17,8 +17,16 @@ from app.context import (
 from app.db.session import get_db_session
 from app.satellite import SatelliteProvider, get_satellite_provider
 from app.schemas import (
+    AnalysisJobType,
     AnalysisExposureComputeResponse,
     AnalysisImpactComputeResponse,
+    MonitorRunEnqueueRequest,
+    MonitorRunEnqueueResponse,
+    MonitorRunRead,
+    MonitorRunStatus,
+    MonitorRunType,
+    MonitorScheduleRead,
+    MonitorScheduleWrite,
     ContextFeatureRead,
     ContextFeatureType,
     ContextRefreshRequest,
@@ -140,6 +148,17 @@ from app.services.monitor_service import (
     get_monitor_summary,
     list_monitors,
     update_monitor,
+)
+from app.services.monitoring_service import (
+    JobConflictError,
+    JobPersistenceError,
+    JobQueryError,
+    JobQueueUnavailableError,
+    enqueue_monitor_run_job,
+    get_monitor_run,
+    get_monitor_schedule,
+    list_monitor_runs,
+    upsert_monitor_schedule,
 )
 from app.services.observation_service import (
     ObservationPersistenceError,
@@ -290,6 +309,195 @@ def _normalize_provider_filter(provider: str | None) -> str | None:
         )
 
     return normalized
+
+
+def _normalize_monitor_run_status(status_value: str | None) -> MonitorRunStatus | None:
+    if status_value is None:
+        return None
+
+    normalized = status_value.strip().lower()
+    if not normalized:
+        return None
+
+    try:
+        return MonitorRunStatus(normalized)
+    except ValueError as exc:
+        values = ", ".join(sorted(status.value for status in MonitorRunStatus))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported run status '{status_value}'. Expected one of: {values}",
+        ) from exc
+
+
+@router.post(
+    "/{monitor_id}/runs",
+    response_model=MonitorRunEnqueueResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def enqueue_monitor_run_route(
+    monitor_id: UUID,
+    request: MonitorRunEnqueueRequest,
+    db_session: Session = Depends(get_db_session),
+) -> MonitorRunEnqueueResponse:
+    try:
+        enqueue_response = enqueue_monitor_run_job(
+            db_session,
+            monitor_id=monitor_id,
+            request=request,
+            run_type=MonitorRunType.MANUAL,
+        )
+    except JobConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Monitor already has an active run",
+        ) from exc
+    except JobQueueUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Monitoring queue is unavailable",
+        ) from exc
+    except (JobPersistenceError, JobQueryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to enqueue monitor run",
+        ) from exc
+
+    if enqueue_response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    return enqueue_response
+
+
+@router.get(
+    "/{monitor_id}/runs",
+    response_model=list[MonitorRunRead],
+    status_code=status.HTTP_200_OK,
+)
+def list_monitor_runs_route(
+    monitor_id: UUID,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    run_status: str | None = Query(default=None, alias="status"),
+    db_session: Session = Depends(get_db_session),
+) -> list[MonitorRunRead]:
+    normalized_status = _normalize_monitor_run_status(run_status)
+
+    try:
+        runs = list_monitor_runs(
+            db_session,
+            monitor_id=monitor_id,
+            limit=limit,
+            offset=offset,
+            status=normalized_status,
+        )
+    except JobQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch monitor runs",
+        ) from exc
+
+    if runs is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    return runs
+
+
+@router.get(
+    "/{monitor_id}/runs/{run_id}",
+    response_model=MonitorRunRead,
+    status_code=status.HTTP_200_OK,
+)
+def get_monitor_run_route(
+    monitor_id: UUID,
+    run_id: UUID,
+    db_session: Session = Depends(get_db_session),
+) -> MonitorRunRead:
+    try:
+        run = get_monitor_run(
+            db_session,
+            monitor_id=monitor_id,
+            run_id=run_id,
+        )
+    except JobQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch monitor run",
+        ) from exc
+
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor run not found")
+
+    return run
+
+
+@router.patch(
+    "/{monitor_id}/schedule",
+    response_model=MonitorScheduleRead,
+    status_code=status.HTTP_200_OK,
+)
+def patch_monitor_schedule_route(
+    monitor_id: UUID,
+    request: MonitorScheduleWrite,
+    db_session: Session = Depends(get_db_session),
+) -> MonitorScheduleRead:
+    try:
+        schedule = upsert_monitor_schedule(
+            db_session,
+            monitor_id=monitor_id,
+            request=request,
+        )
+    except JobConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except (JobPersistenceError, JobQueryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to save monitor schedule",
+        ) from exc
+
+    if schedule is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    return schedule
+
+
+@router.get(
+    "/{monitor_id}/schedule",
+    response_model=MonitorScheduleRead,
+    status_code=status.HTTP_200_OK,
+)
+def get_monitor_schedule_route(
+    monitor_id: UUID,
+    db_session: Session = Depends(get_db_session),
+) -> MonitorScheduleRead:
+    try:
+        monitor = get_monitor(db_session, monitor_id)
+    except MonitorQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch monitor",
+        ) from exc
+
+    if monitor is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    try:
+        schedule = get_monitor_schedule(
+            db_session,
+            monitor_id=monitor_id,
+        )
+    except JobQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch monitor schedule",
+        ) from exc
+
+    if schedule is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor schedule not configured")
+
+    return schedule
 
 
 @router.post("", response_model=MonitorRead, status_code=status.HTTP_201_CREATED)

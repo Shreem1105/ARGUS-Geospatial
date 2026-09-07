@@ -177,7 +177,7 @@ ARGUS can compute event-level exposure intelligence by combining detected change
   - Persists source metadata in monitor_land_cover_sources.
 - **Refresh environmental context**: POST /monitors/{monitor_id}/environment/refresh
   - Loads protected-area or wetland-like polygons intersecting the Monitor AOI.
-  - Persists features in nvironmental_features.
+  - Persists features in environmental_features.
 
 Exposure compute endpoints:
 
@@ -206,3 +206,59 @@ Provider attribution:
 - © OpenStreetMap contributors
 - Source: U.S. Census Bureau
 - Contains modified Copernicus Sentinel data (2021+)
+
+## Background Jobs (Redis + Celery)
+
+ARGUS monitoring runs asynchronously using Celery workers backed by Redis. PostgreSQL remains the authoritative store for job and run history (`analysis_jobs`, `monitor_runs`, `monitor_schedules`).
+
+Core endpoints:
+
+- `POST /monitors/{monitor_id}/runs` (enqueue asynchronous monitoring run; returns `202`)
+- `GET /jobs/{job_id}` (job status/progress/result)
+- `POST /jobs/{job_id}/cancel` (cooperative cancellation request)
+- `GET /monitors/{monitor_id}/runs`
+- `GET /monitors/{monitor_id}/runs/{run_id}`
+- `PATCH /monitors/{monitor_id}/schedule`
+- `GET /monitors/{monitor_id}/schedule`
+- `GET /worker/health`
+
+Typical progress stages include `queued`, `initializing`, `searching_observations`, `preparing_observations`, `running_analysis`, `generating_events`, and `completed` (or `no_new_imagery`/`partial`/`failed`/`cancelled`).
+
+Scheduler behavior:
+
+- Celery Beat triggers a periodic schedule scan task (`MONITOR_SCHEDULE_SCAN_SECONDS`, default `300`).
+- Scan uses PostgreSQL advisory locking and `FOR UPDATE SKIP LOCKED` semantics to avoid duplicate enqueue across scheduler instances.
+- Scheduling cadence is hourly or slower (`interval_hours >= 1`).
+
+Start local services from `W:\Projects\Argus`:
+
+```bash
+docker compose up -d db redis
+docker compose up -d worker scheduler
+```
+
+Start FastAPI from `W:\Projects\Argus\backend`:
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Run worker/scheduler directly (non-Docker) from `W:\Projects\Argus\backend` if preferred:
+
+```bash
+celery -A app.tasks.celery_app:celery_app worker --loglevel=INFO --pool=solo --concurrency=1 -Q monitoring
+celery -A app.tasks.celery_app:celery_app beat --loglevel=INFO
+```
+
+Inspect and stop:
+
+```bash
+docker compose ps
+docker compose logs -f worker
+docker compose logs -f scheduler
+docker compose down
+```
+
+ARGUS monitoring is observation-driven rather than true real-time monitoring. A scheduled run checks for newly available source imagery and only creates a new scientific analysis when a suitable newer observation is available.
+
+Repeated task delivery is expected to be safe because observations, prepared products, analyses, vector events, and contextual enrichment use persistent idempotency controls.
