@@ -25,6 +25,9 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.change_analysis import ChangeAnalysis
+    from app.models.change_event_environmental_exposure import ChangeEventEnvironmentalExposure
+    from app.models.change_event_land_cover_exposure import ChangeEventLandCoverExposure
+    from app.models.change_event_population_exposure import ChangeEventPopulationExposure
     from app.models.change_event_impact import ChangeEventImpact
     from app.models.monitor import Monitor
 
@@ -111,6 +114,18 @@ class ChangeEvent(Base):
     monitor: Mapped[Monitor] = relationship(back_populates="change_events")
     analysis: Mapped[ChangeAnalysis] = relationship(back_populates="change_events")
     impacts: Mapped[list[ChangeEventImpact]] = relationship(
+        back_populates="event",
+        passive_deletes=True,
+    )
+    population_exposures: Mapped[list[ChangeEventPopulationExposure]] = relationship(
+        back_populates="event",
+        passive_deletes=True,
+    )
+    land_cover_exposures: Mapped[list[ChangeEventLandCoverExposure]] = relationship(
+        back_populates="event",
+        passive_deletes=True,
+    )
+    environmental_exposures: Mapped[list[ChangeEventEnvironmentalExposure]] = relationship(
         back_populates="event",
         passive_deletes=True,
     )

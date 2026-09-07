@@ -164,3 +164,45 @@ Important interpretation notes:
 Provider attribution for contextual map data:
 
 - © OpenStreetMap contributors
+
+## Population, Land-cover, and Environmental Exposure
+
+ARGUS can compute event-level exposure intelligence by combining detected change polygons with population units, land-cover classes, and protected-area context.
+
+- **Refresh population units**: POST /monitors/{monitor_id}/population/refresh
+  - Loads Census-derived population polygons intersecting the Monitor AOI.
+  - Persists features in population_features.
+- **Refresh land-cover source**: POST /monitors/{monitor_id}/land-cover/refresh
+  - Resolves the latest WorldCover source item for the Monitor AOI.
+  - Persists source metadata in monitor_land_cover_sources.
+- **Refresh environmental context**: POST /monitors/{monitor_id}/environment/refresh
+  - Loads protected-area or wetland-like polygons intersecting the Monitor AOI.
+  - Persists features in nvironmental_features.
+
+Exposure compute endpoints:
+
+- POST /monitors/{monitor_id}/events/{event_id}/exposure
+- GET /monitors/{monitor_id}/events/{event_id}/exposure
+- POST /monitors/{monitor_id}/analyses/{analysis_id}/exposure
+- GET /monitors/{monitor_id}/exposure/summary
+- GET /monitors/{monitor_id}/datasets
+- GET /monitors/{monitor_id}/events/{event_id}/intelligence
+
+Computation approach:
+
+- Population uses areal-weighted overlap between event geometry and population units.
+- Land-cover uses class breakdown fractions over event footprint from the selected raster source.
+- Environmental exposure uses PostGIS intersections/proximity against stored environmental features.
+- Exposure significance (low/medium/high) is deterministic and separate from scientific change severity.
+
+Interpretation limits:
+
+- A spatial intersection indicates overlap with detected change geometry; it does not, by itself, prove damage, blockage, destruction, or causal impact.
+- Nearby features are contextual information only.
+- Existing context/impact/exposure refresh behavior is additive/update-based and does not perform authoritative source-deletion reconciliation in this stage.
+
+Provider attribution:
+
+- © OpenStreetMap contributors
+- Source: U.S. Census Bureau
+- Contains modified Copernicus Sentinel data (2021+)

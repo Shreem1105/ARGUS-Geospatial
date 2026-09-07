@@ -15,6 +15,9 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.change_analysis import ChangeAnalysis
     from app.models.change_event import ChangeEvent
+    from app.models.environmental_feature import EnvironmentalFeature
+    from app.models.monitor_land_cover_source import MonitorLandCoverSource
+    from app.models.population_feature import PopulationFeature
     from app.models.context_feature import ContextFeature
     from app.models.prepared_observation import PreparedObservation
     from app.models.satellite_observation import SatelliteObservation
@@ -76,6 +79,18 @@ class Monitor(Base):
         passive_deletes=True,
     )
     context_features: Mapped[list[ContextFeature]] = relationship(
+        back_populates="monitor",
+        passive_deletes=True,
+    )
+    population_features: Mapped[list[PopulationFeature]] = relationship(
+        back_populates="monitor",
+        passive_deletes=True,
+    )
+    environmental_features: Mapped[list[EnvironmentalFeature]] = relationship(
+        back_populates="monitor",
+        passive_deletes=True,
+    )
+    land_cover_sources: Mapped[list[MonitorLandCoverSource]] = relationship(
         back_populates="monitor",
         passive_deletes=True,
     )

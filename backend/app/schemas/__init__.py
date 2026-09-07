@@ -24,6 +24,27 @@ from app.schemas.context import (
     ContextRefreshResponse,
     ContextSummaryRead,
 )
+from app.schemas.environment import (
+    EnvironmentalExposureFeatureRead,
+    EnvironmentalExposureSummaryRead,
+    EnvironmentRefreshResponse,
+)
+from app.schemas.exposure import (
+    AnalysisExposureComputeResponse,
+    EventExposureComputeResponse,
+    EventExposureSummaryRead,
+    EventIntelligenceRead,
+    ExposureFactorRead,
+    ExposureSignificance,
+    MonitorDatasetsRead,
+    MonitorDatasetStatusEntryRead,
+    MonitorExposureSummaryRead,
+)
+from app.schemas.landcover import (
+    LandCoverClassExposureRead,
+    LandCoverExposureSummaryRead,
+    LandCoverRefreshResponse,
+)
 from app.schemas.monitor import (
     GeoJSONPoint,
     GeoJSONPolygon,
@@ -41,6 +62,11 @@ from app.schemas.observation import (
     ObservationSearchRequest,
     ObservationSearchResponse,
     SatelliteObservationRead,
+)
+from app.schemas.population import (
+    PopulationExposureSummaryRead,
+    PopulationExposureUnitRead,
+    PopulationRefreshResponse,
 )
 from app.schemas.impact import (
     AdministrativeAreaContext,
@@ -71,6 +97,14 @@ __all__ = [
     "ContextRefreshResponse",
     "ContextSignificance",
     "ContextSummaryRead",
+    "EnvironmentRefreshResponse",
+    "EnvironmentalExposureFeatureRead",
+    "EnvironmentalExposureSummaryRead",
+    "EventExposureComputeResponse",
+    "EventExposureSummaryRead",
+    "EventIntelligenceRead",
+    "ExposureFactorRead",
+    "ExposureSignificance",
     "ChangeEventBoundingBox",
     "ChangeEventGenerationResponse",
     "ChangeEventGeoJSONPoint",
@@ -85,8 +119,11 @@ __all__ = [
     "GeoJSONPolygon",
     "MonitorBoundingBox",
     "MonitorImpactSummaryRead",
+    "MonitorDatasetStatusEntryRead",
+    "MonitorDatasetsRead",
     "MonitorCreate",
     "MonitorEventSummary",
+    "MonitorExposureSummaryRead",
     "MonitorIntersectionRequest",
     "MonitorIntersectionResponse",
     "MonitorRead",
@@ -97,6 +134,13 @@ __all__ = [
     "ObservationSummary",
     "ObservationSearchRequest",
     "ObservationSearchResponse",
+    "PopulationRefreshResponse",
+    "PopulationExposureSummaryRead",
+    "PopulationExposureUnitRead",
+    "LandCoverRefreshResponse",
+    "LandCoverClassExposureRead",
+    "LandCoverExposureSummaryRead",
+    "AnalysisExposureComputeResponse",
     "PreparedObservationRead",
     "PreparedObservationStatus",
     "PrepareObservationRequest",

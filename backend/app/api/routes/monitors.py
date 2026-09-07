@@ -4,19 +4,37 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.context import ContextProvider, get_context_provider
+from app.context import (
+    ContextProvider,
+    EnvironmentalProvider,
+    LandCoverProvider,
+    PopulationProvider,
+    get_context_provider,
+    get_environmental_provider,
+    get_land_cover_provider,
+    get_population_provider,
+)
 from app.db.session import get_db_session
 from app.satellite import SatelliteProvider, get_satellite_provider
 from app.schemas import (
+    AnalysisExposureComputeResponse,
     AnalysisImpactComputeResponse,
     ContextFeatureRead,
     ContextFeatureType,
     ContextRefreshRequest,
     ContextRefreshResponse,
     ContextSummaryRead,
+    EnvironmentRefreshResponse,
+    EventExposureComputeResponse,
+    EventExposureSummaryRead,
+    EventIntelligenceRead,
     EventImpactComputeResponse,
     EventImpactSummaryRead,
+    LandCoverRefreshResponse,
+    MonitorDatasetsRead,
+    MonitorExposureSummaryRead,
     MonitorImpactSummaryRead,
+    PopulationRefreshResponse,
     ChangeAnalysisAutoRequest,
     ChangeAnalysisCreateRequest,
     ChangeAnalysisRead,
@@ -50,6 +68,15 @@ from app.services.context_service import (
     list_context_features,
     refresh_monitor_context,
 )
+from app.services.environment_service import (
+    DEFAULT_ENVIRONMENT_NEARBY_BUFFER_M,
+    EnvironmentConflictError,
+    EnvironmentPersistenceError,
+    EnvironmentProviderRequestError,
+    EnvironmentQueryError,
+    EnvironmentQueryTooLargeError,
+    refresh_monitor_environment,
+)
 from app.services.change_analysis_service import (
     ChangeAnalysisConflictError,
     ChangeAnalysisPersistenceError,
@@ -74,6 +101,24 @@ from app.services.change_event_service import (
     list_change_events,
     list_change_events_for_analysis,
     update_change_event_status,
+)
+from app.services.exposure_service import (
+    ExposureConflictError,
+    ExposurePersistenceError,
+    ExposureProviderRequestError,
+    ExposureQueryError,
+    compute_analysis_exposures,
+    compute_change_event_exposure,
+    get_change_event_exposure,
+    get_event_intelligence,
+    get_monitor_datasets,
+    get_monitor_exposure_summary,
+)
+from app.services.landcover_service import (
+    LandCoverPersistenceError,
+    LandCoverProviderRequestError,
+    LandCoverQueryError,
+    refresh_monitor_land_cover_source,
 )
 from app.services.impact_service import (
     DEFAULT_NEARBY_BUFFER_M,
@@ -103,6 +148,13 @@ from app.services.observation_service import (
     get_observation,
     list_observations,
     search_and_store_observations,
+)
+from app.services.population_service import (
+    PopulationPersistenceError,
+    PopulationProviderRequestError,
+    PopulationQueryError,
+    PopulationQueryTooLargeError,
+    refresh_monitor_population,
 )
 from app.services.prepared_observation_service import (
     PreparedObservationPersistenceError,
@@ -488,6 +540,280 @@ def get_context_summary_route(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
 
     return summary
+
+
+@router.post(
+    "/{monitor_id}/population/refresh",
+    response_model=PopulationRefreshResponse,
+    status_code=status.HTTP_200_OK,
+)
+def refresh_population_route(
+    monitor_id: UUID,
+    db_session: Session = Depends(get_db_session),
+    provider: PopulationProvider = Depends(get_population_provider),
+) -> PopulationRefreshResponse:
+    try:
+        result = refresh_monitor_population(
+            db_session,
+            monitor_id=monitor_id,
+            provider=provider,
+        )
+    except PopulationQueryTooLargeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except PopulationProviderRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Population provider unavailable") from exc
+    except (PopulationPersistenceError, PopulationQueryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to refresh monitor population",
+        ) from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    return result
+
+
+@router.post(
+    "/{monitor_id}/land-cover/refresh",
+    response_model=LandCoverRefreshResponse,
+    status_code=status.HTTP_200_OK,
+)
+def refresh_land_cover_route(
+    monitor_id: UUID,
+    db_session: Session = Depends(get_db_session),
+    provider: LandCoverProvider = Depends(get_land_cover_provider),
+) -> LandCoverRefreshResponse:
+    try:
+        result = refresh_monitor_land_cover_source(
+            db_session,
+            monitor_id=monitor_id,
+            provider=provider,
+        )
+    except LandCoverProviderRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Land-cover provider unavailable") from exc
+    except (LandCoverPersistenceError, LandCoverQueryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to refresh monitor land-cover source",
+        ) from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    return result
+
+
+@router.post(
+    "/{monitor_id}/environment/refresh",
+    response_model=EnvironmentRefreshResponse,
+    status_code=status.HTTP_200_OK,
+)
+def refresh_environment_route(
+    monitor_id: UUID,
+    db_session: Session = Depends(get_db_session),
+    provider: EnvironmentalProvider = Depends(get_environmental_provider),
+) -> EnvironmentRefreshResponse:
+    try:
+        result = refresh_monitor_environment(
+            db_session,
+            monitor_id=monitor_id,
+            provider=provider,
+        )
+    except EnvironmentQueryTooLargeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except EnvironmentProviderRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Environmental provider unavailable") from exc
+    except (EnvironmentPersistenceError, EnvironmentQueryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to refresh monitor environment data",
+        ) from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    return result
+
+
+@router.post(
+    "/{monitor_id}/events/{event_id}/exposure",
+    response_model=EventExposureComputeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def compute_event_exposure_route(
+    monitor_id: UUID,
+    event_id: UUID,
+    response: Response,
+    environment_nearby_buffer_m: float = Query(default=DEFAULT_ENVIRONMENT_NEARBY_BUFFER_M, gt=0, le=10_000),
+    db_session: Session = Depends(get_db_session),
+    land_cover_provider: LandCoverProvider = Depends(get_land_cover_provider),
+) -> EventExposureComputeResponse:
+    try:
+        result = compute_change_event_exposure(
+            db_session,
+            monitor_id=monitor_id,
+            event_id=event_id,
+            land_cover_provider=land_cover_provider,
+            environment_nearby_buffer_m=environment_nearby_buffer_m,
+        )
+    except ExposureConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ExposureProviderRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except (ExposurePersistenceError, ExposureQueryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to compute change-event exposure",
+        ) from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change event not found")
+
+    if not result.computed:
+        response.status_code = status.HTTP_200_OK
+
+    return EventExposureComputeResponse(computed=result.computed, summary=result.summary)
+
+
+@router.get(
+    "/{monitor_id}/events/{event_id}/exposure",
+    response_model=EventExposureSummaryRead,
+    status_code=status.HTTP_200_OK,
+)
+def get_event_exposure_route(
+    monitor_id: UUID,
+    event_id: UUID,
+    db_session: Session = Depends(get_db_session),
+) -> EventExposureSummaryRead:
+    try:
+        summary = get_change_event_exposure(
+            db_session,
+            monitor_id=monitor_id,
+            event_id=event_id,
+        )
+    except ExposureQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch change-event exposure",
+        ) from exc
+
+    if summary is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change-event exposure not found")
+
+    return summary
+
+
+@router.get(
+    "/{monitor_id}/events/{event_id}/intelligence",
+    response_model=EventIntelligenceRead,
+    status_code=status.HTTP_200_OK,
+)
+def get_event_intelligence_route(
+    monitor_id: UUID,
+    event_id: UUID,
+    db_session: Session = Depends(get_db_session),
+) -> EventIntelligenceRead:
+    try:
+        summary = get_event_intelligence(
+            db_session,
+            monitor_id=monitor_id,
+            event_id=event_id,
+        )
+    except ExposureConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ExposureQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch change-event intelligence",
+        ) from exc
+
+    if summary is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change event not found")
+
+    return summary
+
+
+@router.post(
+    "/{monitor_id}/analyses/{analysis_id}/exposure",
+    response_model=AnalysisExposureComputeResponse,
+    status_code=status.HTTP_200_OK,
+)
+def compute_analysis_exposure_route(
+    monitor_id: UUID,
+    analysis_id: UUID,
+    environment_nearby_buffer_m: float = Query(default=DEFAULT_ENVIRONMENT_NEARBY_BUFFER_M, gt=0, le=10_000),
+    db_session: Session = Depends(get_db_session),
+    land_cover_provider: LandCoverProvider = Depends(get_land_cover_provider),
+) -> AnalysisExposureComputeResponse:
+    try:
+        result = compute_analysis_exposures(
+            db_session,
+            monitor_id=monitor_id,
+            analysis_id=analysis_id,
+            land_cover_provider=land_cover_provider,
+            environment_nearby_buffer_m=environment_nearby_buffer_m,
+        )
+    except ExposureConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ExposureProviderRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except (ExposurePersistenceError, ExposureQueryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to compute analysis exposure",
+        ) from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change analysis not found")
+
+    return result.response
+
+
+@router.get(
+    "/{monitor_id}/exposure/summary",
+    response_model=MonitorExposureSummaryRead,
+    status_code=status.HTTP_200_OK,
+)
+def get_monitor_exposure_summary_route(
+    monitor_id: UUID,
+    db_session: Session = Depends(get_db_session),
+) -> MonitorExposureSummaryRead:
+    try:
+        summary = get_monitor_exposure_summary(db_session, monitor_id=monitor_id)
+    except ExposureQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch monitor exposure summary",
+        ) from exc
+
+    if summary is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    return summary
+
+
+@router.get(
+    "/{monitor_id}/datasets",
+    response_model=MonitorDatasetsRead,
+    status_code=status.HTTP_200_OK,
+)
+def get_monitor_datasets_route(
+    monitor_id: UUID,
+    db_session: Session = Depends(get_db_session),
+) -> MonitorDatasetsRead:
+    try:
+        datasets = get_monitor_datasets(db_session, monitor_id=monitor_id)
+    except ExposureQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch monitor dataset metadata",
+        ) from exc
+
+    if datasets is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    return datasets
 
 
 @router.post(
