@@ -51,3 +51,5 @@ data/analyses/
 
 # Celery local runtime state
 celerybeat-schedule*
+celerybeat.pid
+*.pid`r`n
