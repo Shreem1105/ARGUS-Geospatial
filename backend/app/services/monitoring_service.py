@@ -1526,7 +1526,7 @@ def redis_ping_status() -> tuple[bool, str | None]:
         return False, exc.__class__.__name__
 
 
-def celery_worker_ping(timeout_seconds: float = 15.0) -> tuple[bool, int]:
+def celery_worker_ping(timeout_seconds: float = 3.0) -> tuple[bool, int]:
     try:
         from app.tasks.celery_app import celery_app
 

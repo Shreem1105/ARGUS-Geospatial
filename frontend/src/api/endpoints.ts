@@ -277,7 +277,7 @@ export const api = {
     monitor_id?: string;
   }) =>
     (async () => {
-      const limit = params?.limit ?? 200;
+      const limit = params?.limit ?? 100;
       const offset = params?.offset ?? 0;
 
       const monitorIds = params?.monitor_id
@@ -287,7 +287,7 @@ export const api = {
       const batches = await Promise.all(
         monitorIds.map((monitorId) =>
           api.listMonitorEvents(monitorId, {
-            limit: Math.min(limit, 200),
+            limit: Math.min(limit, 100),
             offset: 0,
             severity: params?.severity,
             status: params?.status,
@@ -302,7 +302,7 @@ export const api = {
     })(),
   listGlobalRuns: (params?: { limit?: number; offset?: number; status?: string; monitor_id?: string }) =>
     (async () => {
-      const limit = params?.limit ?? 200;
+      const limit = params?.limit ?? 100;
       const offset = params?.offset ?? 0;
 
       const monitorIds = params?.monitor_id
@@ -312,7 +312,7 @@ export const api = {
       const batches = await Promise.all(
         monitorIds.map((monitorId) =>
           api.listRuns(monitorId, {
-            limit: Math.min(limit, 200),
+            limit: Math.min(limit, 100),
             offset: 0,
             status: params?.status,
           }),

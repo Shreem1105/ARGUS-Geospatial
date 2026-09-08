@@ -3,15 +3,15 @@ services:
     image: postgis/postgis:16-3.4
     container_name: argus-db
     environment:
-      POSTGRES_DB: argus
-      POSTGRES_USER: argus
-      POSTGRES_PASSWORD: argus_dev_password
+      POSTGRES_DB: ${POSTGRES_DB:-argus}
+      POSTGRES_USER: ${POSTGRES_USER:-argus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-argus_dev_password}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
     volumes:
       - argus_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U argus -d argus"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-argus} -d ${POSTGRES_DB:-argus}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,7 +52,7 @@ services:
         "argus-worker@%h"
       ]
     environment:
-      DATABASE_URL: postgresql+psycopg://argus:argus_dev_password@db:5432/argus
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-argus}:${POSTGRES_PASSWORD:-argus_dev_password}@db:5432/${POSTGRES_DB:-argus}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -81,7 +81,7 @@ services:
         "--loglevel=INFO"
       ]
     environment:
-      DATABASE_URL: postgresql+psycopg://argus:argus_dev_password@db:5432/argus
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-argus}:${POSTGRES_PASSWORD:-argus_dev_password}@db:5432/${POSTGRES_DB:-argus}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
