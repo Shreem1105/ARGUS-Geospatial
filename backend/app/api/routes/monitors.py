@@ -2,6 +2,7 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.context import (
@@ -95,6 +96,13 @@ from app.services.change_analysis_service import (
     create_change_analysis_auto,
     get_change_analysis,
     list_change_analyses,
+)
+from app.services.artifact_service import (
+    ArtifactQueryError,
+    ArtifactValidationError,
+    get_analysis_artifact_path,
+    get_prepared_artifact_path,
+    infer_media_type,
 )
 from app.services.change_event_service import (
     ChangeEventConflictError,
@@ -1201,6 +1209,37 @@ def get_prepared_observation_route(
     return prepared
 
 
+@router.get(
+    "/{monitor_id}/observations/{observation_id}/prepared/artifacts/{artifact_kind}",
+    status_code=status.HTTP_200_OK,
+)
+def get_prepared_artifact_route(
+    monitor_id: UUID,
+    observation_id: UUID,
+    artifact_kind: str,
+    db_session: Session = Depends(get_db_session),
+) -> FileResponse:
+    try:
+        artifact_path = get_prepared_artifact_path(
+            db_session,
+            monitor_id=monitor_id,
+            observation_id=observation_id,
+            artifact_kind=artifact_kind,
+        )
+    except ArtifactValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prepared artifact not found") from exc
+    except ArtifactQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch prepared artifact",
+        ) from exc
+
+    if artifact_path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prepared artifact not found")
+
+    return FileResponse(path=artifact_path, media_type=infer_media_type(artifact_path), filename=artifact_path.name)
+
+
 @router.post(
     "/{monitor_id}/analyses",
     response_model=ChangeAnalysisRead,
@@ -1339,6 +1378,37 @@ def get_analysis_route(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change analysis not found")
 
     return analysis
+
+
+@router.get(
+    "/{monitor_id}/analyses/{analysis_id}/artifacts/{artifact_kind}",
+    status_code=status.HTTP_200_OK,
+)
+def get_analysis_artifact_route(
+    monitor_id: UUID,
+    analysis_id: UUID,
+    artifact_kind: str,
+    db_session: Session = Depends(get_db_session),
+) -> FileResponse:
+    try:
+        artifact_path = get_analysis_artifact_path(
+            db_session,
+            monitor_id=monitor_id,
+            analysis_id=analysis_id,
+            artifact_kind=artifact_kind,
+        )
+    except ArtifactValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis artifact not found") from exc
+    except ArtifactQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch analysis artifact",
+        ) from exc
+
+    if artifact_path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis artifact not found")
+
+    return FileResponse(path=artifact_path, media_type=infer_media_type(artifact_path), filename=artifact_path.name)
 
 
 @router.post(

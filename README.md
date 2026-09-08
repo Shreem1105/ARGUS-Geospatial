@@ -10,7 +10,7 @@ ARGUS monitors geographic areas using real satellite imagery, detects temporal c
 | --- | --- |
 | Backend | Operational |
 | Async monitoring (Redis + Celery) | Operational |
-| Frontend | In development |
+| Frontend | Operational |
 
 ## What ARGUS Does
 
@@ -72,13 +72,13 @@ flowchart TD
 | Satellite / Remote Sensing | Microsoft Planetary Computer STAC, pystac-client, rasterio |
 | Database | PostgreSQL 16 + PostGIS 3.4, SQLAlchemy 2.x, Alembic |
 | Async Infrastructure | Redis 7, Celery 5 |
-| Frontend | Next.js/MapLibre planned (not yet implemented in this repository) |
+| Frontend | Next.js 16 App Router, React 19, TypeScript, Tailwind CSS, MapLibre GL JS, TanStack Query |
 
 ## Example Real Validation
 
 Example local validation run (September 7, 2026):
 
-- `332` backend tests passed with `python -m pytest -q`.
+- `336` backend tests passed with `python -m pytest -q` (latest local verification).
 - A live Sentinel-2 monitor run discovered and stored real observations from STAC.
 - A real before/after pair was prepared and analyzed into persisted ChangeEvents.
 - PostGIS readiness (`/ready`) and worker health (`/worker/health`) were validated.
@@ -108,10 +108,17 @@ docker compose up -d db redis
 docker compose up -d worker scheduler
 ```
 
-From `W:\Projects\Argus\backend`:
+From `W:\Projects\Argus\backend` (API):
 
 ```bash
 C:\Users\shree\AppData\Local\Programs\Python\Python311\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+From `W:\Projects\Argus\frontend` (UI):
+
+```bash
+npm install
+npm run dev
 ```
 
 Stop services:
@@ -162,7 +169,7 @@ Latest confirmed result: `332 passed`.
 
 Planned next steps:
 
-- Interactive MapLibre frontend.
+- Curated public Explore showcase datasets (precomputed).
 - Public Explore mode with curated scenarios.
 - Constrained authenticated Monitor mode.
 - Notifications.

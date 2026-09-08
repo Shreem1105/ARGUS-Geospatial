@@ -1,10 +1,25 @@
 # ARGUS Public Demo Plan
 
-This document describes the planned public product direction after the engineering frontend foundation is completed.
+This document describes the public product direction now that the engineering frontend foundation is implemented.
 
 ## Product split
 
 ARGUS public experience is intentionally separated into **EXPLORE** and **MONITOR**.
+
+## Implemented foundation (current)
+
+Implemented in the repository:
+
+- Product shell with Explore and Monitor mode entry points.
+- Map-first Explore workspace with real backend integration and no fabricated detections.
+- Monitor workspace for AOI creation, run orchestration, event review, and intelligence panels.
+- Keyboard-forward UX primitives (command palette, shortcuts, system status surface).
+- Frontend API abstraction prepared for future curated Explore scenarios.
+
+Not yet implemented in this phase:
+
+- Curated precomputed public showcase datasets.
+- Anonymous Explore dataset publishing workflow.
 
 ### EXPLORE (public, no-login)
 
