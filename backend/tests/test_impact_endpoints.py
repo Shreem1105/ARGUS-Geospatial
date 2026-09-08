@@ -365,6 +365,35 @@ def test_event_impact_errors_for_missing_context_and_unknown_event(client: TestC
     assert unknown.status_code == 404
 
 
+def test_bulk_analysis_impact_reuses_existing_result_when_context_removed(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+) -> None:
+    monitor_id = create_monitor_and_track(client, created_monitor_ids)
+    analysis_id, event_id = seed_event_graph(monitor_id)
+    seed_context_features(monitor_id)
+
+    first = client.post(f"/monitors/{monitor_id}/analyses/{analysis_id}/impact")
+    assert first.status_code == 200
+    assert first.json()["impact_relationship_count"] > 0
+
+    with SessionLocal() as db_session:
+        db_session.execute(delete(ContextFeature).where(ContextFeature.monitor_id == monitor_id))
+        db_session.commit()
+
+    second = client.post(f"/monitors/{monitor_id}/analyses/{analysis_id}/impact")
+    assert second.status_code == 200
+    second_body = second.json()
+    assert second_body["event_count"] == 1
+    assert second_body["computed"] == 0
+    assert second_body["failed"] == 0
+    assert second_body["impact_relationship_count"] == 0
+
+    event_summary = client.get(f"/monitors/{monitor_id}/events/{event_id}/impact")
+    assert event_summary.status_code == 200
+    assert event_summary.json()["impact_relationship_count"] == 0
+
+
 def test_bulk_analysis_impact_and_monitor_summary(client: TestClient, created_monitor_ids: list[UUID]) -> None:
     monitor_id = create_monitor_and_track(client, created_monitor_ids)
     analysis_id, event_id = seed_event_graph(monitor_id)

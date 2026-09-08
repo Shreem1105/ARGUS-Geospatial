@@ -348,15 +348,15 @@ def compute_change_event_exposure(
     if event is None:
         return None
 
-    missing = _dataset_readiness_checks(db_session, monitor_id)
-    if missing:
-        missing_text = ", ".join(missing)
-        raise ExposureConflictError(f"Required datasets are missing for this monitor: {missing_text}")
-
     if _event_has_exposure_snapshot(event):
         existing_summary = get_change_event_exposure(db_session, monitor_id=monitor_id, event_id=event_id)
         if existing_summary is not None:
             return EventExposureComputationResult(summary=existing_summary, computed=False)
+
+    missing = _dataset_readiness_checks(db_session, monitor_id)
+    if missing:
+        missing_text = ", ".join(missing)
+        raise ExposureConflictError(f"Required datasets are missing for this monitor: {missing_text}")
 
     try:
         population_summary = compute_change_event_population_exposure(
@@ -497,11 +497,6 @@ def compute_analysis_exposures(
     if analysis is None:
         return None
 
-    missing = _dataset_readiness_checks(db_session, monitor_id)
-    if missing:
-        missing_text = ", ".join(missing)
-        raise ExposureConflictError(f"Required datasets are missing for this monitor: {missing_text}")
-
     try:
         events = db_session.execute(
             select(ChangeEvent)
@@ -529,6 +524,10 @@ def compute_analysis_exposures(
                 environment_nearby_buffer_m=environment_nearby_buffer_m,
             )
         except ExposureConflictError:
+            existing_summary = get_change_event_exposure(db_session, monitor_id=monitor_id, event_id=event.id)
+            if existing_summary is not None:
+                reused += 1
+                continue
             raise
         except (
             ExposurePersistenceError,

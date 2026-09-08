@@ -475,10 +475,6 @@ def compute_change_event_impact(
     if event is None:
         return None
 
-    context_count = _context_count_for_monitor(db_session, monitor_id)
-    if context_count <= 0:
-        raise ImpactConflictError("Context features are not loaded for this monitor")
-
     had_existing_impacts = bool(
         db_session.execute(
             text("SELECT 1 FROM change_event_impacts WHERE event_id = :event_id LIMIT 1"),
@@ -486,6 +482,23 @@ def compute_change_event_impact(
         ).first()
     )
     had_prior = had_existing_impacts or _event_has_impact_marker(event)
+
+    context_count = _context_count_for_monitor(db_session, monitor_id)
+    if context_count <= 0:
+        if had_prior:
+            existing_summary = get_change_event_impact_summary(
+                db_session,
+                monitor_id=monitor_id,
+                event_id=event_id,
+            )
+            if existing_summary is not None:
+                logger.info(
+                    "Reusing existing event impact summary monitor_id=%s event_id=%s because context is unavailable",
+                    monitor_id,
+                    event_id,
+                )
+                return EventImpactComputationResult(summary=existing_summary, computed=False)
+        raise ImpactConflictError("Context features are not loaded for this monitor")
 
     relationship_rows = _fetch_relationship_rows(
         db_session,
@@ -553,10 +566,6 @@ def compute_analysis_impacts(
     if analysis is None:
         return None
 
-    context_count = _context_count_for_monitor(db_session, monitor_id)
-    if context_count <= 0:
-        raise ImpactConflictError("Context features are not loaded for this monitor")
-
     try:
         events = db_session.execute(
             select(ChangeEvent)
@@ -570,6 +579,51 @@ def compute_analysis_impacts(
         raise ImpactQueryError("Failed to fetch analysis events") from exc
 
     event_ids = [event.id for event in events]
+
+    if not event_ids:
+        return BulkImpactComputationResult(
+            response=AnalysisImpactComputeResponse(
+                analysis_id=analysis_id,
+                event_count=0,
+                computed=0,
+                failed=0,
+                impact_relationship_count=0,
+                elapsed_seconds=0.0,
+            )
+        )
+
+    context_count = _context_count_for_monitor(db_session, monitor_id)
+    if context_count <= 0:
+        reused_summaries: list[EventImpactSummaryRead] = []
+        for event in events:
+            summary = get_change_event_impact_summary(
+                db_session,
+                monitor_id=monitor_id,
+                event_id=event.id,
+            )
+            if summary is None:
+                raise ImpactConflictError("Context features are not loaded for this monitor")
+            reused_summaries.append(summary)
+
+        relationship_count = sum(summary.impact_relationship_count for summary in reused_summaries)
+        logger.info(
+            "Reused existing analysis impacts monitor_id=%s analysis_id=%s events=%s relationships=%s because context is unavailable",
+            monitor_id,
+            analysis_id,
+            len(event_ids),
+            relationship_count,
+        )
+        return BulkImpactComputationResult(
+            response=AnalysisImpactComputeResponse(
+                analysis_id=analysis_id,
+                event_count=len(event_ids),
+                computed=0,
+                failed=0,
+                impact_relationship_count=relationship_count,
+                elapsed_seconds=0.0,
+            )
+        )
+
     started_at = time.perf_counter()
 
     relationship_rows = _fetch_relationship_rows(

@@ -24,7 +24,7 @@ from app.context import (
 )
 from app.core.config import Settings, get_settings
 from app.db.session import SessionLocal
-from app.models import AnalysisJob, Monitor, MonitorRun, MonitorSchedule, SatelliteObservation
+from app.models import AnalysisJob, ChangeEvent, Monitor, MonitorRun, MonitorSchedule, SatelliteObservation
 from app.satellite import get_satellite_provider
 from app.schemas import (
     AnalysisJobRead,
@@ -76,12 +76,14 @@ from app.services.exposure_service import (
     ExposureProviderRequestError,
     ExposureQueryError,
     compute_analysis_exposures,
+    get_change_event_exposure,
 )
 from app.services.impact_service import (
     ImpactConflictError,
     ImpactPersistenceError,
     ImpactQueryError,
     compute_analysis_impacts,
+    get_change_event_impact_summary,
 )
 from app.services.landcover_service import (
     LandCoverPersistenceError,
@@ -185,6 +187,196 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_jsonable(item) for item in value]
     return value
+
+
+def _analysis_event_ids(db_session: Session, *, monitor_id: UUID, analysis_id: UUID) -> list[UUID]:
+    try:
+        return db_session.execute(
+            select(ChangeEvent.id).where(
+                ChangeEvent.monitor_id == monitor_id,
+                ChangeEvent.analysis_id == analysis_id,
+            )
+        ).scalars().all()
+    except SQLAlchemyError as exc:
+        raise JobQueryError("Failed to fetch analysis events for reuse") from exc
+
+
+def _reuse_existing_analysis_impact_payload(
+    db_session: Session,
+    *,
+    monitor_id: UUID,
+    analysis_id: UUID,
+) -> dict[str, Any] | None:
+    event_ids = _analysis_event_ids(db_session, monitor_id=monitor_id, analysis_id=analysis_id)
+    if not event_ids:
+        return {
+            "analysis_id": str(analysis_id),
+            "event_count": 0,
+            "computed": 0,
+            "failed": 0,
+            "impact_relationship_count": 0,
+            "elapsed_seconds": 0.0,
+        }
+
+    relationship_count = 0
+    for event_id in event_ids:
+        summary = get_change_event_impact_summary(
+            db_session,
+            monitor_id=monitor_id,
+            event_id=event_id,
+        )
+        if summary is None:
+            return None
+        relationship_count += int(summary.impact_relationship_count)
+
+    return {
+        "analysis_id": str(analysis_id),
+        "event_count": len(event_ids),
+        "computed": 0,
+        "failed": 0,
+        "impact_relationship_count": relationship_count,
+        "elapsed_seconds": 0.0,
+    }
+
+
+def _reuse_existing_analysis_exposure_payload(
+    db_session: Session,
+    *,
+    monitor_id: UUID,
+    analysis_id: UUID,
+) -> dict[str, Any] | None:
+    event_ids = _analysis_event_ids(db_session, monitor_id=monitor_id, analysis_id=analysis_id)
+    if not event_ids:
+        return {
+            "analysis_id": str(analysis_id),
+            "event_count": 0,
+            "computed": 0,
+            "reused": 0,
+            "failed": 0,
+            "elapsed_seconds": 0.0,
+        }
+
+    for event_id in event_ids:
+        summary = get_change_event_exposure(
+            db_session,
+            monitor_id=monitor_id,
+            event_id=event_id,
+        )
+        if summary is None:
+            return None
+
+    return {
+        "analysis_id": str(analysis_id),
+        "event_count": len(event_ids),
+        "computed": 0,
+        "reused": len(event_ids),
+        "failed": 0,
+        "elapsed_seconds": 0.0,
+    }
+
+
+def _compute_context_products_for_run(
+    db_session: Session,
+    *,
+    job: AnalysisJob,
+    run: MonitorRun,
+    analysis_id: UUID,
+    parameters: dict[str, Any],
+    event_count: int,
+    warnings: list[str],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    impact_payload: dict[str, Any] | None = None
+    exposure_payload: dict[str, Any] | None = None
+
+    if event_count <= 0:
+        return impact_payload, exposure_payload
+
+    _update_progress(db_session, job=job, run=run, stage="computing_impacts", progress_percent=84.0)
+    _ensure_not_cancelled(db_session, job_id=job.id)
+    try:
+        impact_result = compute_analysis_impacts(
+            db_session,
+            monitor_id=job.monitor_id,
+            analysis_id=analysis_id,
+            nearby_buffer_m=float(parameters.get("impact_nearby_buffer_m") or 100.0),
+        )
+        if impact_result is not None:
+            run.impacts_computed = True
+            impact_payload = impact_result.response.model_dump(mode="json")
+            db_session.add(run)
+            db_session.commit()
+    except ImpactConflictError as exc:
+        try:
+            reused_payload = _reuse_existing_analysis_impact_payload(
+                db_session,
+                monitor_id=job.monitor_id,
+                analysis_id=analysis_id,
+            )
+        except (JobQueryError, ImpactQueryError):
+            reused_payload = None
+
+        if reused_payload is not None:
+            run.impacts_computed = True
+            impact_payload = reused_payload
+            db_session.add(run)
+            db_session.commit()
+            logger.info(
+                "Reused existing analysis impact payload after conflict job_id=%s run_id=%s monitor_id=%s analysis_id=%s",
+                job.id,
+                run.id,
+                job.monitor_id,
+                analysis_id,
+            )
+        else:
+            warnings.append(f"impact_compute_failed:{exc.__class__.__name__}")
+    except (ImpactPersistenceError, ImpactQueryError) as exc:
+        warnings.append(f"impact_compute_failed:{exc.__class__.__name__}")
+
+    _update_progress(db_session, job=job, run=run, stage="computing_exposures", progress_percent=92.0)
+    _ensure_not_cancelled(db_session, job_id=job.id)
+    try:
+        exposure_result = compute_analysis_exposures(
+            db_session,
+            monitor_id=job.monitor_id,
+            analysis_id=analysis_id,
+            land_cover_provider=get_land_cover_provider(),
+            environment_nearby_buffer_m=float(parameters.get("environment_nearby_buffer_m") or 500.0),
+        )
+        if exposure_result is not None:
+            run.exposures_computed = True
+            exposure_payload = exposure_result.response.model_dump(mode="json")
+            db_session.add(run)
+            db_session.commit()
+    except TRANSIENT_PROVIDER_ERRORS as exc:
+        warnings.append(f"exposure_provider_failed:{exc.__class__.__name__}")
+    except ExposureConflictError as exc:
+        try:
+            reused_payload = _reuse_existing_analysis_exposure_payload(
+                db_session,
+                monitor_id=job.monitor_id,
+                analysis_id=analysis_id,
+            )
+        except (JobQueryError, ExposureQueryError):
+            reused_payload = None
+
+        if reused_payload is not None:
+            run.exposures_computed = True
+            exposure_payload = reused_payload
+            db_session.add(run)
+            db_session.commit()
+            logger.info(
+                "Reused existing analysis exposure payload after conflict job_id=%s run_id=%s monitor_id=%s analysis_id=%s",
+                job.id,
+                run.id,
+                job.monitor_id,
+                analysis_id,
+            )
+        else:
+            warnings.append(f"exposure_compute_failed:{exc.__class__.__name__}")
+    except (ExposurePersistenceError, ExposureQueryError) as exc:
+        warnings.append(f"exposure_compute_failed:{exc.__class__.__name__}")
+
+    return impact_payload, exposure_payload
 
 
 def _job_to_read(job: AnalysisJob) -> AnalysisJobRead:
@@ -1290,50 +1482,15 @@ def execute_monitor_run_workflow(
         db_session.add(run)
         db_session.commit()
 
-        impact_payload: dict[str, Any] | None = None
-        exposure_payload: dict[str, Any] | None = None
-
-        if event_result.response.count > 0:
-            _update_progress(db_session, job=job, run=run, stage="computing_impacts", progress_percent=84.0)
-            _ensure_not_cancelled(db_session, job_id=job.id)
-            try:
-                impact_result = compute_analysis_impacts(
-                    db_session,
-                    monitor_id=job.monitor_id,
-                    analysis_id=analysis.id,
-                    nearby_buffer_m=float(parameters.get("impact_nearby_buffer_m") or 100.0),
-                )
-                if impact_result is not None:
-                    run.impacts_computed = True
-                    impact_payload = impact_result.response.model_dump(mode="json")
-                    db_session.add(run)
-                    db_session.commit()
-            except (ImpactConflictError, ImpactPersistenceError, ImpactQueryError) as exc:
-                warnings.append(f"impact_compute_failed:{exc.__class__.__name__}")
-
-            _update_progress(db_session, job=job, run=run, stage="computing_exposures", progress_percent=92.0)
-            _ensure_not_cancelled(db_session, job_id=job.id)
-            try:
-                exposure_result = compute_analysis_exposures(
-                    db_session,
-                    monitor_id=job.monitor_id,
-                    analysis_id=analysis.id,
-                    land_cover_provider=get_land_cover_provider(),
-                    environment_nearby_buffer_m=float(parameters.get("environment_nearby_buffer_m") or 500.0),
-                )
-                if exposure_result is not None:
-                    run.exposures_computed = True
-                    exposure_payload = exposure_result.response.model_dump(mode="json")
-                    db_session.add(run)
-                    db_session.commit()
-            except TRANSIENT_PROVIDER_ERRORS as exc:
-                warnings.append(f"exposure_provider_failed:{exc.__class__.__name__}")
-            except (
-                ExposureConflictError,
-                ExposurePersistenceError,
-                ExposureQueryError,
-            ) as exc:
-                warnings.append(f"exposure_compute_failed:{exc.__class__.__name__}")
+        impact_payload, exposure_payload = _compute_context_products_for_run(
+            db_session,
+            job=job,
+            run=run,
+            analysis_id=analysis.id,
+            parameters=parameters,
+            event_count=event_result.response.count,
+            warnings=warnings,
+        )
 
         elapsed_seconds = time.perf_counter() - started_at
         result_payload = {

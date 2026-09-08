@@ -4,6 +4,7 @@ from collections.abc import Generator
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from itertools import count
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -34,6 +35,42 @@ MONITOR_POLYGON = {
 class _FakeAsyncResult:
     def __init__(self, task_id: str) -> None:
         self.id = task_id
+
+
+class _FakeComputedResponse:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self._payload = payload
+
+    def model_dump(self, *, mode: str = "json") -> dict[str, object]:
+        return dict(self._payload)
+
+
+class _FakeComputedResult:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.response = _FakeComputedResponse(payload)
+
+
+def _create_job_and_run(monitor_id: UUID) -> tuple[UUID, UUID]:
+    with SessionLocal() as db_session:
+        job = AnalysisJob(
+            monitor_id=monitor_id,
+            job_type="monitor_run",
+            status="running",
+            progress_stage="running",
+            progress_percent=50.0,
+            requested_parameters={},
+        )
+        run = MonitorRun(
+            monitor_id=monitor_id,
+            analysis_job=job,
+            run_type="manual",
+            status="started",
+            requested_parameters={},
+            progress_log=[],
+        )
+        db_session.add_all([job, run])
+        db_session.commit()
+        return job.id, run.id
 
 
 @pytest.fixture
@@ -450,6 +487,309 @@ def test_delete_monitor_cascades_jobs_runs_and_schedule(
     assert jobs_count == 0
     assert runs_count == 0
     assert schedule_count == 0
+
+
+def test_context_products_success_has_no_conflict_warnings(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = create_monitor_and_track(client, created_monitor_ids)
+    monitor_id = UUID(monitor["id"])
+    job_id, run_id = _create_job_and_run(monitor_id)
+
+    warnings: list[str] = []
+    analysis_id = uuid4()
+
+    monkeypatch.setattr(monitoring_service, "_update_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(monitoring_service, "_ensure_not_cancelled", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        monitoring_service,
+        "compute_analysis_impacts",
+        lambda *args, **kwargs: _FakeComputedResult(
+            {
+                "analysis_id": str(analysis_id),
+                "event_count": 1,
+                "computed": 1,
+                "failed": 0,
+                "impact_relationship_count": 2,
+                "elapsed_seconds": 0.01,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        monitoring_service,
+        "compute_analysis_exposures",
+        lambda *args, **kwargs: _FakeComputedResult(
+            {
+                "analysis_id": str(analysis_id),
+                "event_count": 1,
+                "computed": 1,
+                "reused": 0,
+                "failed": 0,
+                "elapsed_seconds": 0.01,
+            }
+        ),
+    )
+
+    with SessionLocal() as db_session:
+        job = db_session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id)).scalar_one()
+        run = db_session.execute(select(MonitorRun).where(MonitorRun.id == run_id)).scalar_one()
+
+        impact_payload, exposure_payload = monitoring_service._compute_context_products_for_run(
+            db_session,
+            job=job,
+            run=run,
+            analysis_id=analysis_id,
+            parameters={},
+            event_count=1,
+            warnings=warnings,
+        )
+        db_session.refresh(run)
+
+    assert warnings == []
+    assert run.impacts_computed is True
+    assert run.exposures_computed is True
+    assert impact_payload is not None
+    assert exposure_payload is not None
+
+
+def test_context_products_reuse_existing_impact_on_conflict_is_non_fatal(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = create_monitor_and_track(client, created_monitor_ids)
+    monitor_id = UUID(monitor["id"])
+    job_id, run_id = _create_job_and_run(monitor_id)
+
+    warnings: list[str] = []
+    analysis_id = uuid4()
+
+    monkeypatch.setattr(monitoring_service, "_update_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(monitoring_service, "_ensure_not_cancelled", lambda *args, **kwargs: None)
+
+    def _raise_impact(*args, **kwargs):
+        raise monitoring_service.ImpactConflictError("already computed")
+
+    monkeypatch.setattr(monitoring_service, "compute_analysis_impacts", _raise_impact)
+    monkeypatch.setattr(
+        monitoring_service,
+        "_reuse_existing_analysis_impact_payload",
+        lambda *args, **kwargs: {
+            "analysis_id": str(analysis_id),
+            "event_count": 1,
+            "computed": 0,
+            "failed": 0,
+            "impact_relationship_count": 3,
+            "elapsed_seconds": 0.0,
+        },
+    )
+    monkeypatch.setattr(
+        monitoring_service,
+        "compute_analysis_exposures",
+        lambda *args, **kwargs: _FakeComputedResult(
+            {
+                "analysis_id": str(analysis_id),
+                "event_count": 1,
+                "computed": 1,
+                "reused": 0,
+                "failed": 0,
+                "elapsed_seconds": 0.01,
+            }
+        ),
+    )
+
+    with SessionLocal() as db_session:
+        job = db_session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id)).scalar_one()
+        run = db_session.execute(select(MonitorRun).where(MonitorRun.id == run_id)).scalar_one()
+
+        impact_payload, _ = monitoring_service._compute_context_products_for_run(
+            db_session,
+            job=job,
+            run=run,
+            analysis_id=analysis_id,
+            parameters={},
+            event_count=1,
+            warnings=warnings,
+        )
+        db_session.refresh(run)
+
+    assert run.impacts_computed is True
+    assert impact_payload is not None
+    assert all("ImpactConflictError" not in warning for warning in warnings)
+
+
+def test_context_products_reuse_existing_exposure_on_conflict_is_non_fatal(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = create_monitor_and_track(client, created_monitor_ids)
+    monitor_id = UUID(monitor["id"])
+    job_id, run_id = _create_job_and_run(monitor_id)
+
+    warnings: list[str] = []
+    analysis_id = uuid4()
+
+    monkeypatch.setattr(monitoring_service, "_update_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(monitoring_service, "_ensure_not_cancelled", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        monitoring_service,
+        "compute_analysis_impacts",
+        lambda *args, **kwargs: _FakeComputedResult(
+            {
+                "analysis_id": str(analysis_id),
+                "event_count": 1,
+                "computed": 1,
+                "failed": 0,
+                "impact_relationship_count": 1,
+                "elapsed_seconds": 0.01,
+            }
+        ),
+    )
+
+    def _raise_exposure(*args, **kwargs):
+        raise monitoring_service.ExposureConflictError("already computed")
+
+    monkeypatch.setattr(monitoring_service, "compute_analysis_exposures", _raise_exposure)
+    monkeypatch.setattr(
+        monitoring_service,
+        "_reuse_existing_analysis_exposure_payload",
+        lambda *args, **kwargs: {
+            "analysis_id": str(analysis_id),
+            "event_count": 1,
+            "computed": 0,
+            "reused": 1,
+            "failed": 0,
+            "elapsed_seconds": 0.0,
+        },
+    )
+
+    with SessionLocal() as db_session:
+        job = db_session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id)).scalar_one()
+        run = db_session.execute(select(MonitorRun).where(MonitorRun.id == run_id)).scalar_one()
+
+        _, exposure_payload = monitoring_service._compute_context_products_for_run(
+            db_session,
+            job=job,
+            run=run,
+            analysis_id=analysis_id,
+            parameters={},
+            event_count=1,
+            warnings=warnings,
+        )
+        db_session.refresh(run)
+
+    assert run.exposures_computed is True
+    assert exposure_payload is not None
+    assert all("ExposureConflictError" not in warning for warning in warnings)
+
+
+def test_context_products_genuine_impact_failure_still_warns(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = create_monitor_and_track(client, created_monitor_ids)
+    monitor_id = UUID(monitor["id"])
+    job_id, run_id = _create_job_and_run(monitor_id)
+
+    warnings: list[str] = []
+    analysis_id = uuid4()
+
+    monkeypatch.setattr(monitoring_service, "_update_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(monitoring_service, "_ensure_not_cancelled", lambda *args, **kwargs: None)
+
+    def _raise_impact(*args, **kwargs):
+        raise monitoring_service.ImpactQueryError("query failed")
+
+    monkeypatch.setattr(monitoring_service, "compute_analysis_impacts", _raise_impact)
+    monkeypatch.setattr(
+        monitoring_service,
+        "compute_analysis_exposures",
+        lambda *args, **kwargs: _FakeComputedResult(
+            {
+                "analysis_id": str(analysis_id),
+                "event_count": 1,
+                "computed": 1,
+                "reused": 0,
+                "failed": 0,
+                "elapsed_seconds": 0.01,
+            }
+        ),
+    )
+
+    with SessionLocal() as db_session:
+        job = db_session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id)).scalar_one()
+        run = db_session.execute(select(MonitorRun).where(MonitorRun.id == run_id)).scalar_one()
+
+        monitoring_service._compute_context_products_for_run(
+            db_session,
+            job=job,
+            run=run,
+            analysis_id=analysis_id,
+            parameters={},
+            event_count=1,
+            warnings=warnings,
+        )
+        db_session.refresh(run)
+
+    assert run.impacts_computed is False
+    assert any(warning == "impact_compute_failed:ImpactQueryError" for warning in warnings)
+
+
+def test_context_products_genuine_exposure_failure_still_warns(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = create_monitor_and_track(client, created_monitor_ids)
+    monitor_id = UUID(monitor["id"])
+    job_id, run_id = _create_job_and_run(monitor_id)
+
+    warnings: list[str] = []
+    analysis_id = uuid4()
+
+    monkeypatch.setattr(monitoring_service, "_update_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(monitoring_service, "_ensure_not_cancelled", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        monitoring_service,
+        "compute_analysis_impacts",
+        lambda *args, **kwargs: _FakeComputedResult(
+            {
+                "analysis_id": str(analysis_id),
+                "event_count": 1,
+                "computed": 1,
+                "failed": 0,
+                "impact_relationship_count": 1,
+                "elapsed_seconds": 0.01,
+            }
+        ),
+    )
+
+    def _raise_exposure(*args, **kwargs):
+        raise monitoring_service.ExposureQueryError("query failed")
+
+    monkeypatch.setattr(monitoring_service, "compute_analysis_exposures", _raise_exposure)
+
+    with SessionLocal() as db_session:
+        job = db_session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id)).scalar_one()
+        run = db_session.execute(select(MonitorRun).where(MonitorRun.id == run_id)).scalar_one()
+
+        monitoring_service._compute_context_products_for_run(
+            db_session,
+            job=job,
+            run=run,
+            analysis_id=analysis_id,
+            parameters={},
+            event_count=1,
+            warnings=warnings,
+        )
+        db_session.refresh(run)
+
+    assert run.exposures_computed is False
+    assert any(warning == "exposure_compute_failed:ExposureQueryError" for warning in warnings)
 
 
 def test_root_health_ready_regression(client: TestClient) -> None:

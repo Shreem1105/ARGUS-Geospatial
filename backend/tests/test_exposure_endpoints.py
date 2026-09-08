@@ -993,6 +993,105 @@ def test_bulk_analysis_exposure_and_summary_and_datasets(
     assert entries["environment"]["status"] == "available"
 
 
+def test_bulk_analysis_exposure_reuses_existing_when_context_and_land_cover_sources_removed(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+) -> None:
+    monitor_id = create_monitor_and_track(client, created_monitor_ids)
+    analysis_id, event_ids = seed_event_graph(monitor_id, event_count=2)
+    seed_context_features(monitor_id)
+
+    _refresh_all_datasets(
+        client,
+        monitor_id=monitor_id,
+        population_provider=FakePopulationProvider(features=make_population_candidates()),
+        land_cover_provider=FakeLandCoverProvider(),
+        environment_provider=FakeEnvironmentalProvider(features=make_environment_candidates()),
+    )
+
+    for event_id in event_ids:
+        response = client.post(f"/monitors/{monitor_id}/events/{event_id}/impact")
+        assert response.status_code in {200, 201}
+
+    first = client.post(f"/monitors/{monitor_id}/analyses/{analysis_id}/exposure")
+    assert first.status_code == 200
+    assert first.json()["computed"] == 2
+
+    with SessionLocal() as db_session:
+        population_count_before = int(
+            db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM change_event_population_exposures "
+                    "WHERE event_id = ANY(:event_ids)"
+                ),
+                {"event_ids": event_ids},
+            ).scalar_one()
+        )
+        land_cover_count_before = int(
+            db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM change_event_land_cover_exposures "
+                    "WHERE event_id = ANY(:event_ids)"
+                ),
+                {"event_ids": event_ids},
+            ).scalar_one()
+        )
+        environment_count_before = int(
+            db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM change_event_environmental_exposures "
+                    "WHERE event_id = ANY(:event_ids)"
+                ),
+                {"event_ids": event_ids},
+            ).scalar_one()
+        )
+
+        db_session.execute(delete(ContextFeature).where(ContextFeature.monitor_id == monitor_id))
+        db_session.execute(delete(MonitorLandCoverSource).where(MonitorLandCoverSource.monitor_id == monitor_id))
+        db_session.commit()
+
+    second = client.post(f"/monitors/{monitor_id}/analyses/{analysis_id}/exposure")
+    assert second.status_code == 200
+    second_body = second.json()
+    assert second_body["event_count"] == 2
+    assert second_body["computed"] == 0
+    assert second_body["reused"] == 2
+    assert second_body["failed"] == 0
+
+    with SessionLocal() as db_session:
+        population_count_after = int(
+            db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM change_event_population_exposures "
+                    "WHERE event_id = ANY(:event_ids)"
+                ),
+                {"event_ids": event_ids},
+            ).scalar_one()
+        )
+        land_cover_count_after = int(
+            db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM change_event_land_cover_exposures "
+                    "WHERE event_id = ANY(:event_ids)"
+                ),
+                {"event_ids": event_ids},
+            ).scalar_one()
+        )
+        environment_count_after = int(
+            db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM change_event_environmental_exposures "
+                    "WHERE event_id = ANY(:event_ids)"
+                ),
+                {"event_ids": event_ids},
+            ).scalar_one()
+        )
+
+    assert population_count_after == population_count_before
+    assert land_cover_count_after == land_cover_count_before
+    assert environment_count_after == environment_count_before
+
+
 def test_population_feature_constraints_and_uniqueness(
     client: TestClient,
     created_monitor_ids: list[UUID],
