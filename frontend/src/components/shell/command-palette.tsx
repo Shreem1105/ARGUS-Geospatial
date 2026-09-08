@@ -39,10 +39,17 @@ export function CommandPalette() {
       },
       {
         id: "go-monitors",
-        label: "Open Monitor Workspace",
+        label: "Open Monitors",
         group: "Navigation",
         shortcut: "G M",
-        onSelect: () => router.push("/monitor"),
+        onSelect: () => router.push("/monitors"),
+      },
+      {
+        id: "go-monitor-new",
+        label: "Create Monitor",
+        group: "Navigation",
+        shortcut: "G N",
+        onSelect: () => router.push("/monitors/new"),
       },
       {
         id: "go-events",
@@ -64,7 +71,7 @@ export function CommandPalette() {
       id: `monitor-${monitor.id}`,
       label: `Open Monitor: ${monitor.name}`,
       group: "Monitors",
-      onSelect: () => router.push(`/monitor/${monitor.id}`),
+      onSelect: () => router.push(`/monitors/${monitor.id}`),
     }));
 
     return [...base, ...monitorActions];

@@ -3,17 +3,36 @@
 import Image from "next/image";
 
 import { Panel, PanelHeader } from "@/components/ui";
+import { formatDateUtc } from "@/lib/format";
 
 type BeforeAfterViewerProps = {
   beforePreviewUrl: string | null;
   afterPreviewUrl: string | null;
   changeMaskUrl: string | null;
+  beforeItemId?: string | null;
+  afterItemId?: string | null;
+  beforeAcquiredAt?: string | null;
+  afterAcquiredAt?: string | null;
 };
 
-export function BeforeAfterViewer({ beforePreviewUrl, afterPreviewUrl, changeMaskUrl }: BeforeAfterViewerProps) {
+export function BeforeAfterViewer({
+  beforePreviewUrl,
+  afterPreviewUrl,
+  changeMaskUrl,
+  beforeItemId,
+  afterItemId,
+  beforeAcquiredAt,
+  afterAcquiredAt,
+}: BeforeAfterViewerProps) {
   return (
     <Panel>
       <PanelHeader title="Before / After / Change" subtitle="Prepared observation previews and analysis mask" />
+
+      <div className="border-b border-argus-border px-3 py-2 text-xs text-argus-muted">
+        <p>Before: {beforeItemId ?? "—"} · {formatDateUtc(beforeAcquiredAt)}</p>
+        <p>After: {afterItemId ?? "—"} · {formatDateUtc(afterAcquiredAt)}</p>
+      </div>
+
       <div className="grid gap-3 p-3 md:grid-cols-3">
         <Preview title="Before" imageUrl={beforePreviewUrl} />
         <Preview title="After" imageUrl={afterPreviewUrl} />

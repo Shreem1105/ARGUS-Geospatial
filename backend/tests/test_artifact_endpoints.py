@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -293,4 +293,220 @@ def test_artifact_unknown_kind_returns_404(client: TestClient, created_monitor_i
 
     response = client.get(f"/monitors/{monitor_id}/observations/{observation_id}/prepared/artifacts/not-a-kind")
     assert response.status_code == 404
+
+
+
+def test_get_prepared_artifact_returns_png_content_type(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+    tmp_path: Path,
+) -> None:
+    monitor_id = _create_monitor(created_monitor_ids)
+    observation_id = _insert_observation(monitor_id, "S2_ART_PNG")
+
+    prepared_dir = tmp_path / "prepared"
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+
+    preview = prepared_dir / "preview.png"
+    preview.write_bytes(b"png-bytes")
+    storage = prepared_dir / "stack.tif"
+    storage.write_bytes(b"stack")
+    mask = prepared_dir / "mask.tif"
+    mask.write_bytes(b"mask")
+
+    _insert_prepared(
+        monitor_id,
+        observation_id,
+        storage_path=storage,
+        mask_path=mask,
+        preview_path=preview,
+    )
+
+    response = client.get(f"/monitors/{monitor_id}/observations/{observation_id}/prepared/artifacts/preview")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/png")
+
+
+def test_get_prepared_artifact_missing_prepared_returns_404(client: TestClient, created_monitor_ids: list[UUID]) -> None:
+    monitor_id = _create_monitor(created_monitor_ids)
+    observation_id = _insert_observation(monitor_id, "S2_ART_MISSING_PREPARED")
+
+    response = client.get(f"/monitors/{monitor_id}/observations/{observation_id}/prepared/artifacts/preview")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Prepared artifact not found"}
+
+
+def test_get_prepared_artifact_wrong_monitor_returns_404(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+    tmp_path: Path,
+) -> None:
+    monitor_id = _create_monitor(created_monitor_ids)
+    other_monitor_id = _create_monitor(created_monitor_ids)
+    observation_id = _insert_observation(monitor_id, "S2_ART_WRONG_MONITOR")
+
+    prepared_dir = tmp_path / "prepared"
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+    preview = prepared_dir / "preview.png"
+    preview.write_bytes(b"preview")
+    storage = prepared_dir / "stack.tif"
+    storage.write_bytes(b"stack")
+    mask = prepared_dir / "mask.tif"
+    mask.write_bytes(b"mask")
+
+    _insert_prepared(
+        monitor_id,
+        observation_id,
+        storage_path=storage,
+        mask_path=mask,
+        preview_path=preview,
+    )
+
+    response = client.get(f"/monitors/{other_monitor_id}/observations/{observation_id}/prepared/artifacts/preview")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Prepared artifact not found"}
+
+
+def test_get_analysis_artifact_unknown_analysis_returns_404(client: TestClient, created_monitor_ids: list[UUID]) -> None:
+    monitor_id = _create_monitor(created_monitor_ids)
+
+    response = client.get(f"/monitors/{monitor_id}/analyses/{uuid4()}/artifacts/change-mask")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Analysis artifact not found"}
+
+
+def test_get_analysis_artifact_wrong_monitor_returns_404(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+    tmp_path: Path,
+) -> None:
+    monitor_id = _create_monitor(created_monitor_ids)
+    other_monitor_id = _create_monitor(created_monitor_ids)
+    before_observation_id = _insert_observation(monitor_id, "S2_ART_WRONG_ANALYSIS_BEFORE")
+    after_observation_id = _insert_observation(monitor_id, "S2_ART_WRONG_ANALYSIS_AFTER")
+
+    prepared_dir = tmp_path / "prepared"
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+
+    before_stack = prepared_dir / "before-stack.tif"
+    before_mask = prepared_dir / "before-mask.tif"
+    before_preview = prepared_dir / "before-preview.png"
+    before_stack.write_bytes(b"before-stack")
+    before_mask.write_bytes(b"before-mask")
+    before_preview.write_bytes(b"before-preview")
+
+    before_prepared = _insert_prepared(
+        monitor_id,
+        before_observation_id,
+        storage_path=before_stack,
+        mask_path=before_mask,
+        preview_path=before_preview,
+    )
+
+    after_stack = prepared_dir / "after-stack.tif"
+    after_mask = prepared_dir / "after-mask.tif"
+    after_preview = prepared_dir / "after-preview.png"
+    after_stack.write_bytes(b"after-stack")
+    after_mask.write_bytes(b"after-mask")
+    after_preview.write_bytes(b"after-preview")
+
+    after_prepared = _insert_prepared(
+        monitor_id,
+        after_observation_id,
+        storage_path=after_stack,
+        mask_path=after_mask,
+        preview_path=after_preview,
+    )
+
+    analyses_dir = tmp_path / "analyses"
+    analyses_dir.mkdir(parents=True, exist_ok=True)
+    mask = analyses_dir / "change-mask.tif"
+    preview = analyses_dir / "analysis-preview.png"
+    score = analyses_dir / "change-score.tif"
+    mask.write_bytes(b"mask")
+    preview.write_bytes(b"preview")
+    score.write_bytes(b"score")
+
+    analysis_id = _insert_analysis(
+        monitor_id,
+        before_prepared,
+        after_prepared,
+        mask_path=mask,
+        preview_path=preview,
+        score_path=score,
+    )
+
+    response = client.get(f"/monitors/{other_monitor_id}/analyses/{analysis_id}/artifacts/change-mask")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Analysis artifact not found"}
+
+
+def test_prepared_artifact_path_traversal_style_uri_returns_404(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+    tmp_path: Path,
+) -> None:
+    monitor_id = _create_monitor(created_monitor_ids)
+    observation_id = _insert_observation(monitor_id, "S2_ART_TRAVERSAL")
+
+    prepared_dir = tmp_path / "prepared"
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+    storage = prepared_dir / "stack.tif"
+    storage.write_bytes(b"stack")
+    mask = prepared_dir / "mask.tif"
+    mask.write_bytes(b"mask")
+
+    outside = tmp_path.parent / "outside.png"
+    outside.write_bytes(b"outside")
+
+    traversal_path = prepared_dir / ".." / outside.name
+
+    with SessionLocal() as db_session:
+        prepared = PreparedObservation(
+            monitor_id=monitor_id,
+            observation_id=observation_id,
+            status="ready",
+            storage_uri=storage.resolve().as_uri(),
+            valid_mask_uri=mask.resolve().as_uri(),
+            preview_uri=traversal_path.as_uri(),
+            crs="EPSG:4326",
+            resolution_m=10.0,
+            width=64,
+            height=64,
+            band_names=["B02", "B03", "B04", "B08"],
+            cloud_fraction=0.15,
+            valid_fraction=0.9,
+            nodata_value=0.0,
+            processing_metadata={},
+        )
+        db_session.add(prepared)
+        db_session.commit()
+
+    response = client.get(f"/monitors/{monitor_id}/observations/{observation_id}/prepared/artifacts/preview")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Prepared artifact not found"}
+
+
+def test_artifact_invalid_uuid_returns_422(client: TestClient) -> None:
+    response = client.get("/monitors/not-a-uuid/observations/not-a-uuid/prepared/artifacts/preview")
+    assert response.status_code == 422
+
+
+def test_artifact_404_response_does_not_leak_local_paths(
+    client: TestClient,
+    created_monitor_ids: list[UUID],
+) -> None:
+    monitor_id = _create_monitor(created_monitor_ids)
+    observation_id = _insert_observation(monitor_id, "S2_ART_NO_LEAK")
+
+    response = client.get(f"/monitors/{monitor_id}/observations/{observation_id}/prepared/artifacts/preview")
+    body = response.text
+
+    assert response.status_code == 404
+    assert "W:\\\\" not in body
+    assert "C:\\\\" not in body
+    assert "Prepared artifact not found" in body
 

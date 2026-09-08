@@ -9,7 +9,7 @@ export function CuratedExploreEmptyState() {
       detail="Explore mode is ready and connected to real ARGUS data. Once curated precomputed scenarios are published, they will appear here for instant public walkthroughs."
       action={
         <Link
-          href="/monitor"
+          href="/monitors"
           className="rounded-md border border-argus-border bg-argus-panel px-3 py-1.5 text-xs text-argus-text"
         >
           Open Monitor mode

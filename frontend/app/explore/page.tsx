@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { Group as PanelGroup, Panel as ResizePanel, Separator as PanelResizeHandle } from "react-resizable-panels";
 
-import { ArgusMap } from "@/components/map/argus-map";
-import { CuratedExploreEmptyState } from "@/components/explore/curated-empty-state";
 import { EventIntelligencePanel } from "@/components/events/event-intelligence-panel";
+import { CuratedExploreEmptyState } from "@/components/explore/curated-empty-state";
+import { ArgusMap } from "@/components/map/argus-map";
 import { EventList } from "@/components/events/event-list";
 import { ErrorState, LoadingState, Panel, PanelHeader } from "@/components/ui";
 import { useEventIntelligenceQuery, useGlobalEventsQuery, useMonitorsQuery } from "@/hooks/queries";
@@ -53,6 +54,7 @@ export default function ExplorePage() {
               <option value="high">high</option>
               <option value="critical">critical</option>
             </select>
+
             <select
               value={values.status ?? ""}
               onChange={(event) => setValues({ status: event.target.value || null })}
@@ -64,11 +66,12 @@ export default function ExplorePage() {
               <option value="dismissed">dismissed</option>
               <option value="confirmed">confirmed</option>
             </select>
+
             <button
               type="button"
               onClick={() => {
-                void eventsQuery.refetch();
                 void monitorsQuery.refetch();
+                void eventsQuery.refetch();
               }}
               className="inline-flex items-center gap-1 rounded-md border border-argus-border bg-argus-panel px-2 py-1 text-argus-muted"
             >
@@ -76,13 +79,27 @@ export default function ExplorePage() {
             </button>
           </div>
         </div>
+
+        {!noCurated ? (
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            {curatedScenarios.map((scenario) => (
+              <Link
+                key={scenario.id}
+                href={`/explore/${scenario.id}`}
+                className="rounded border border-argus-border bg-argus-panel px-2 py-1 text-argus-muted hover:text-argus-text"
+              >
+                {scenario.title}
+              </Link>
+            ))}
+          </div>
+        ) : null}
       </Panel>
 
       {noCurated ? <CuratedExploreEmptyState /> : null}
 
-      {eventsQuery.isLoading || monitorsQuery.isLoading ? <LoadingState label="Loading Explore data…" /> : null}
-      {eventsQuery.error ? <ErrorState detail={(eventsQuery.error as Error).message} /> : null}
+      {monitorsQuery.isLoading || eventsQuery.isLoading ? <LoadingState label="Loading Explore map and events…" /> : null}
       {monitorsQuery.error ? <ErrorState detail={(monitorsQuery.error as Error).message} /> : null}
+      {eventsQuery.error ? <ErrorState detail={(eventsQuery.error as Error).message} /> : null}
 
       <PanelGroup orientation="horizontal" className="min-h-[680px] overflow-hidden rounded-lg border border-argus-border">
         <ResizePanel defaultSize={64} minSize={40}>
@@ -117,6 +134,7 @@ export default function ExplorePage() {
               loading={intelligenceQuery.isLoading}
               error={intelligenceQuery.error ? (intelligenceQuery.error as Error).message : null}
               intelligence={intelligenceQuery.data ?? null}
+              event={selectedEvent}
             />
           </div>
         </ResizePanel>

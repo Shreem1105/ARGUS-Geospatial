@@ -23,11 +23,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   const body = text ? safeParseJson(text) : null;
 
   if (!response.ok) {
-    const detail =
-      typeof body === "object" && body && "detail" in body && typeof body.detail === "string"
-        ? body.detail
-        : `Request failed (${response.status})`;
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, extractApiErrorDetail(response.status, body));
   }
 
   return (body as T) ?? ({} as T);
@@ -55,6 +51,58 @@ export function apiDelete(path: string): Promise<void> {
   return apiRequest<void>(path, {
     method: "DELETE",
   });
+}
+
+export function extractApiErrorDetail(status: number, body: unknown): string {
+  const fallback = `Request failed (${status})`;
+
+  if (typeof body !== "object" || body == null || !Object.prototype.hasOwnProperty.call(body, "detail")) {
+    return fallback;
+  }
+
+  const detail = (body as { detail: unknown }).detail;
+
+  if (typeof detail === "string" && detail.trim().length > 0) {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((entry) => {
+        if (typeof entry === "string") {
+          return entry;
+        }
+        if (typeof entry !== "object" || entry == null) {
+          return null;
+        }
+
+        const record = entry as { loc?: unknown; msg?: unknown };
+        const msg = typeof record.msg === "string" ? record.msg : null;
+        const loc = Array.isArray(record.loc)
+          ? record.loc
+              .filter((segment): segment is string | number => typeof segment === "string" || typeof segment === "number")
+              .filter((segment) => segment !== "body")
+              .join(".")
+          : "";
+
+        if (!msg) {
+          return null;
+        }
+
+        return loc ? `${loc}: ${msg}` : msg;
+      })
+      .filter((value): value is string => Boolean(value));
+
+    if (messages.length > 0) {
+      return messages.join("; ");
+    }
+  }
+
+  if (typeof detail === "object" && detail != null && "msg" in detail && typeof (detail as { msg?: unknown }).msg === "string") {
+    return (detail as { msg: string }).msg;
+  }
+
+  return fallback;
 }
 
 function safeParseJson(value: string): unknown {

@@ -1,45 +1,40 @@
 "use client";
 
 import { Panel, PanelHeader } from "@/components/ui";
-import type { MonitorRun } from "@/types/api";
+import { buildPipelineSteps } from "@/lib/pipeline";
+import type { AnalysisJob, MonitorRun } from "@/types/api";
 
 type PipelineVisualizerProps = {
   run: MonitorRun | null;
+  job: AnalysisJob | null;
 };
 
-const stages = [
-  "search_observations",
-  "prepare_before",
-  "prepare_after",
-  "change_analysis",
-  "generate_events",
-  "compute_impact",
-  "compute_exposure",
-  "completed",
-] as const;
-
-export function PipelineVisualizer({ run }: PipelineVisualizerProps) {
-  const progressStages = new Set(
-    (run?.progress_log ?? [])
-      .map((entry) => (typeof entry.stage === "string" ? entry.stage : null))
-      .filter((value): value is string => Boolean(value)),
-  );
+export function PipelineVisualizer({ run, job }: PipelineVisualizerProps) {
+  const steps = buildPipelineSteps(run, job);
 
   return (
     <Panel>
-      <PanelHeader title="Pipeline" subtitle="Run orchestration progress" />
+      <PanelHeader title="Pipeline" subtitle="Satellite → Prepare → Detect → Vectorize → Context → Exposure" />
       <div className="space-y-2 p-3">
-        {stages.map((stage) => {
-          const reached = progressStages.has(stage) || run?.status === "succeeded";
+        {steps.map((step) => {
+          const className =
+            step.state === "done"
+              ? "border-argus-good/40 bg-argus-good/10 text-argus-good"
+              : step.state === "active"
+                ? "border-argus-accent/50 bg-argus-accent/10 text-argus-text"
+                : step.state === "failed"
+                  ? "border-argus-danger/50 bg-argus-danger/10 text-argus-danger"
+                  : step.state === "skipped"
+                    ? "border-argus-warn/40 bg-argus-warn/10 text-argus-warn"
+                    : "border-argus-border text-argus-muted";
+
           return (
-            <div
-              key={stage}
-              className={`flex items-center justify-between rounded-md border px-3 py-2 text-xs ${
-                reached ? "border-argus-good/40 bg-argus-good/10 text-argus-good" : "border-argus-border text-argus-muted"
-              }`}
-            >
-              <span>{stage}</span>
-              <span>{reached ? "done" : "pending"}</span>
+            <div key={step.key} className={`rounded-md border px-3 py-2 ${className}`}>
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold">{step.label}</span>
+                <span>{step.state}</span>
+              </div>
+              <p className="mt-1 text-[11px] opacity-90">{step.detail}</p>
             </div>
           );
         })}

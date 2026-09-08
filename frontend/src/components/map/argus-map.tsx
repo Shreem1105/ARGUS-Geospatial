@@ -7,9 +7,11 @@ import * as maplibregl from "maplibre-gl";
 import type { LngLatBoundsLike, Map } from "maplibre-gl";
 import { useEffect, useMemo, useRef } from "react";
 
-import { MAP_STYLE } from "@/lib/constants";
+import { formatArea, formatPercent } from "@/lib/format";
 import { bboxFromGeometry } from "@/lib/map";
 import type { ChangeEvent, Monitor } from "@/types/api";
+
+import { MAP_STYLE } from "@/lib/constants";
 
 type ArgusMapProps = {
   monitor?: Monitor | null;
@@ -26,6 +28,7 @@ function buildMonitorGeoJson(monitor?: Monitor | null): GeoJsonFeatureCollection
   if (!monitor) {
     return { type: "FeatureCollection", features: [] };
   }
+
   return {
     type: "FeatureCollection",
     features: [
@@ -54,14 +57,23 @@ function buildEventsGeoJson(events: ChangeEvent[] = []): GeoJsonFeatureCollectio
         severity: event.severity,
         confidence: event.confidence,
         status: event.status,
+        area_m2: event.area_m2,
       },
     })),
   };
 }
 
+function toBounds(bbox: [number, number, number, number]): LngLatBoundsLike {
+  return [
+    [bbox[0], bbox[1]],
+    [bbox[2], bbox[3]],
+  ];
+}
+
 export function ArgusMap({ monitor, events = [], selectedEventId, onSelectEvent, className }: ArgusMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
 
   const monitorCollection = useMemo(() => buildMonitorGeoJson(monitor), [monitor]);
   const eventsCollection = useMemo(() => buildEventsGeoJson(events), [events]);
@@ -161,17 +173,46 @@ export function ArgusMap({ monitor, events = [], selectedEventId, onSelectEvent,
         }
       });
 
-      map.on("mouseenter", "events-fill", () => {
+      map.on("mousemove", "events-fill", (ev: any) => {
         map.getCanvas().style.cursor = "pointer";
+        const feature = ev.features?.[0];
+        const props = feature?.properties;
+        if (!props) {
+          return;
+        }
+
+        const eventId = typeof props.id === "string" ? props.id : "unknown";
+        const severity = typeof props.severity === "string" ? props.severity : "—";
+        const confidence = Number(props.confidence);
+        const areaM2 = Number(props.area_m2);
+
+        const html = `
+          <div style="font-size:12px;line-height:1.35">
+            <div style="font-weight:600">Event ${eventId.slice(0, 8)}</div>
+            <div>Severity: ${severity}</div>
+            <div>Confidence: ${Number.isFinite(confidence) ? formatPercent(confidence * 100, 1) : "—"}</div>
+            <div>Area: ${Number.isFinite(areaM2) ? formatArea(areaM2) : "—"}</div>
+          </div>
+        `;
+
+        if (!popupRef.current) {
+          popupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+        }
+
+        popupRef.current.setLngLat(ev.lngLat).setHTML(html).addTo(map);
       });
+
       map.on("mouseleave", "events-fill", () => {
         map.getCanvas().style.cursor = "";
+        popupRef.current?.remove();
       });
     });
 
     mapRef.current = map;
 
     return () => {
+      popupRef.current?.remove();
+      popupRef.current = null;
       map.remove();
       mapRef.current = null;
     };
@@ -184,30 +225,29 @@ export function ArgusMap({ monitor, events = [], selectedEventId, onSelectEvent,
     }
 
     const source = map.getSource(MONITOR_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (source) {
-      source.setData(monitorCollection as never);
-    }
+    source?.setData(monitorCollection as never);
 
     const eventSource = map.getSource(EVENTS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (eventSource) {
-      eventSource.setData(eventsCollection as never);
-    }
+    eventSource?.setData(eventsCollection as never);
 
     if (map.getLayer("events-selected")) {
       map.setFilter("events-selected", ["==", ["get", "id"], selectedEventId ?? ""]);
     }
 
-    if (monitor?.geometry) {
-      const bbox = bboxFromGeometry(monitor.geometry);
-      if (bbox) {
-        const bounds: LngLatBoundsLike = [
-          [bbox[0], bbox[1]],
-          [bbox[2], bbox[3]],
-        ];
-        map.fitBounds(bounds, { padding: 50, duration: 500, maxZoom: 14 });
-      }
+    const selectedEvent = selectedEventId ? events.find((item) => item.id === selectedEventId) ?? null : null;
+    const targetGeometry = selectedEvent?.geometry ?? monitor?.geometry;
+
+    if (!targetGeometry) {
+      return;
     }
-  }, [monitorCollection, eventsCollection, selectedEventId, monitor]);
+
+    const bbox = bboxFromGeometry(targetGeometry);
+    if (!bbox) {
+      return;
+    }
+
+    map.fitBounds(toBounds(bbox), { padding: 50, duration: 500, maxZoom: selectedEvent ? 15 : 14 });
+  }, [monitorCollection, eventsCollection, selectedEventId, monitor, events]);
 
   return <div ref={containerRef} className={className ?? "h-full min-h-[360px] w-full rounded-lg"} aria-label="ARGUS map" />;
 }

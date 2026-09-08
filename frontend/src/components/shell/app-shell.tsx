@@ -8,12 +8,13 @@ import { PropsWithChildren, useEffect } from "react";
 
 import { CommandPalette } from "@/components/shell/command-palette";
 import { SystemStatusPill } from "@/components/shell/system-status-pill";
+import { isTextEntryTarget } from "@/lib/keyboard";
 import { UiStateProvider, useUiState } from "@/state/ui-state";
 
 const links = [
   { href: "/", label: "Product", icon: Satellite },
   { href: "/explore", label: "Explore", icon: Earth },
-  { href: "/monitor", label: "Monitor", icon: Radar },
+  { href: "/monitors", label: "Monitors", icon: Radar },
   { href: "/events", label: "Events", icon: Layers },
   { href: "/runs", label: "Runs", icon: Activity },
 ];
@@ -25,21 +26,30 @@ function AppShellInner({ children }: PropsWithChildren) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isTextEntryTarget(event.target)) {
+        return;
+      }
+
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setCommandPaletteOpen(true);
+        return;
       }
+
       if (event.altKey && event.key === "1") {
         event.preventDefault();
         router.push("/explore");
+        return;
       }
       if (event.altKey && event.key === "2") {
         event.preventDefault();
-        router.push("/monitor");
+        router.push("/monitors");
+        return;
       }
       if (event.altKey && event.key === "3") {
         event.preventDefault();
         router.push("/events");
+        return;
       }
       if (event.altKey && event.key === "4") {
         event.preventDefault();

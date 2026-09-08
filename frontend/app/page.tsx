@@ -18,10 +18,10 @@ export default function ProductHomePage() {
             <p className="text-xs uppercase text-argus-muted">Public mode</p>
             <h2 className="mt-1 text-lg font-semibold">Explore</h2>
             <p className="mt-2 text-sm text-argus-muted">
-              Inspect existing monitors and change events without triggering expensive backend jobs.
+              Inspect persisted events, map context, and intelligence outputs without triggering expensive backend jobs.
             </p>
           </Link>
-          <Link href="/monitor" className="rounded-lg border border-argus-border bg-argus-panelMuted p-4 hover:border-argus-accent">
+          <Link href="/monitors" className="rounded-lg border border-argus-border bg-argus-panelMuted p-4 hover:border-argus-accent">
             <p className="text-xs uppercase text-argus-muted">Operational mode</p>
             <h2 className="mt-1 text-lg font-semibold">Monitor</h2>
             <p className="mt-2 text-sm text-argus-muted">
@@ -41,7 +41,7 @@ export default function ProductHomePage() {
             <span className="argus-kbd">Alt 1</span> Explore mode
           </li>
           <li>
-            <span className="argus-kbd">Alt 2</span> Monitor mode
+            <span className="argus-kbd">Alt 2</span> Monitors mode
           </li>
           <li>
             <span className="argus-kbd">Alt 3</span> Global events

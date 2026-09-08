@@ -25,6 +25,7 @@ export const qk = {
   monitorExposureSummary: (monitorId: string) => ["monitor-exposure-summary", monitorId] as const,
   monitorEventSummary: (monitorId: string) => ["monitor-event-summary", monitorId] as const,
   datasets: (monitorId: string) => ["monitor-datasets", monitorId] as const,
+  job: (jobId: string) => ["job", jobId] as const,
   workerHealth: ["worker-health"] as const,
   readyHealth: ["ready-health"] as const,
   appHealth: ["app-health"] as const,
@@ -132,6 +133,22 @@ export function usePreparedObservationQuery(monitorId: string | null, observatio
   });
 }
 
+
+export function useJobQuery(jobId: string | null) {
+  return useQuery({
+    queryKey: jobId ? qk.job(jobId) : ["job-none"],
+    queryFn: () => api.getJob(jobId as string),
+    enabled: Boolean(jobId),
+    retry: false,
+    refetchInterval: (query) => {
+      const job = query.state.data as { status?: string } | undefined;
+      if (!job) {
+        return 3000;
+      }
+      return job.status === "queued" || job.status === "running" ? 3000 : false;
+    },
+  });
+}
 export function useEventIntelligenceQuery(monitorId: string | null, eventId: string | null) {
   return useQuery({
     queryKey: monitorId && eventId ? qk.eventIntelligence(monitorId, eventId) : ["event-intelligence-none"],

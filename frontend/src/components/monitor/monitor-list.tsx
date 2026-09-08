@@ -26,7 +26,7 @@ export function MonitorList({ monitors, summaries = {}, selectedMonitorId }: Mon
         return (
           <li key={monitor.id}>
             <Link
-              href={`/monitor/${monitor.id}`}
+              href={`/monitors/${monitor.id}`}
               className={`block rounded-md border p-3 transition ${
                 active
                   ? "border-argus-accent bg-argus-accent/10"

@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { AoiDrawMap } from "@/components/map/aoi-draw-map";
 import { ErrorState, Panel, PanelHeader } from "@/components/ui";
+import { validateMonitorPolygon } from "@/lib/monitor-validation";
 import type { GeoJsonPolygon } from "@/types/geojson";
 
 export type MonitorCreateInput = {
@@ -28,11 +29,18 @@ export function MonitorCreateForm({ onSubmit, submitting, error }: MonitorCreate
   const [sensitivity, setSensitivity] = useState(0.5);
   const [minimumChangeAreaM2, setMinimumChangeAreaM2] = useState(250);
   const [geometry, setGeometry] = useState<GeoJsonPolygon | null>(null);
-  const canSubmit = useMemo(() => name.trim() && geometry, [name, geometry]);
+  const [geometryError, setGeometryError] = useState<string | null>(null);
+
+  const canSubmit = useMemo(() => {
+    return Boolean(name.trim()) && geometry != null && !geometryError;
+  }, [name, geometry, geometryError]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!geometry || !name.trim()) {
+
+    const geoError = validateMonitorPolygon(geometry);
+    setGeometryError(geoError);
+    if (geoError || !geometry || !name.trim()) {
       return;
     }
 
@@ -48,16 +56,17 @@ export function MonitorCreateForm({ onSubmit, submitting, error }: MonitorCreate
     setName("");
     setDescription("");
     setMonitorType("general");
+    setGeometry(null);
+    setGeometryError(null);
   };
 
   return (
     <Panel>
-      <PanelHeader
-        title="Create Monitor"
-        subtitle="Draw AOI and create a monitor linked to real backend analysis workflows"
-      />
+      <PanelHeader title="Create Monitor" subtitle="Draw AOI and create a monitor linked to real backend analysis workflows" />
       <form className="space-y-3 p-4" onSubmit={handleSubmit}>
         {error ? <ErrorState detail={error} /> : null}
+        {geometryError ? <ErrorState detail={geometryError} /> : null}
+
         <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-1 text-xs text-argus-muted">
             Name
@@ -68,14 +77,17 @@ export function MonitorCreateForm({ onSubmit, submitting, error }: MonitorCreate
               required
             />
           </label>
+
           <label className="space-y-1 text-xs text-argus-muted">
             Monitor type
             <input
               value={monitorType}
               onChange={(e) => setMonitorType(e.target.value)}
               className="w-full rounded-md border border-argus-border bg-argus-panel px-3 py-2 text-sm text-argus-text outline-none"
+              required
             />
           </label>
+
           <label className="space-y-1 text-xs text-argus-muted md:col-span-2">
             Description
             <textarea
@@ -84,6 +96,7 @@ export function MonitorCreateForm({ onSubmit, submitting, error }: MonitorCreate
               className="h-20 w-full rounded-md border border-argus-border bg-argus-panel px-3 py-2 text-sm text-argus-text outline-none"
             />
           </label>
+
           <label className="space-y-1 text-xs text-argus-muted">
             Sensitivity ({sensitivity.toFixed(2)})
             <input
@@ -96,6 +109,7 @@ export function MonitorCreateForm({ onSubmit, submitting, error }: MonitorCreate
               className="w-full"
             />
           </label>
+
           <label className="space-y-1 text-xs text-argus-muted">
             Minimum change area (m²)
             <input
@@ -108,7 +122,16 @@ export function MonitorCreateForm({ onSubmit, submitting, error }: MonitorCreate
           </label>
         </div>
 
-        <AoiDrawMap onGeometryChange={setGeometry} />
+        <AoiDrawMap
+          onGeometryChange={(nextGeometry) => {
+            setGeometry(nextGeometry);
+            if (nextGeometry) {
+              setGeometryError(validateMonitorPolygon(nextGeometry));
+            } else {
+              setGeometryError("AOI polygon is required.");
+            }
+          }}
+        />
 
         <button
           type="submit"

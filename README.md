@@ -78,7 +78,7 @@ flowchart TD
 
 Example local validation run (September 7, 2026):
 
-- `336` backend tests passed with `python -m pytest -q` (latest local verification).
+- `344` backend tests passed with `python -m pytest -q` (latest local verification).
 - A live Sentinel-2 monitor run discovered and stored real observations from STAC.
 - A real before/after pair was prepared and analyzed into persisted ChangeEvents.
 - PostGIS readiness (`/ready`) and worker health (`/worker/health`) were validated.
@@ -121,6 +121,10 @@ npm install
 npm run dev
 ```
 
+Frontend routes (canonical): `/`, `/explore`, `/explore/[caseId]`, `/monitors`, `/monitors/new`, `/monitors/[monitorId]`, `/events`, `/runs`.
+
+Legacy aliases `/monitor` and `/monitor/[monitorId]` redirect to the canonical `/monitors*` routes.
+
 Stop services:
 
 ```bash
@@ -153,7 +157,7 @@ Platform-neutral alternative:
 python -m pytest -q
 ```
 
-Latest confirmed result: `332 passed`.
+Latest confirmed result: `344 passed`.
 
 ## Limitations
 

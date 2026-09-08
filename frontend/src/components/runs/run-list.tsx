@@ -1,7 +1,7 @@
 "use client";
 
-import { Panel, PanelHeader } from "@/components/ui";
-import { formatDate, formatNumber, fromNow } from "@/lib/format";
+import { Badge, Panel, PanelHeader } from "@/components/ui";
+import { formatDate, formatDateUtc, formatElapsed, formatNumber, fromNow, titleCase } from "@/lib/format";
 import type { MonitorRun } from "@/types/api";
 
 type RunListProps = {
@@ -12,6 +12,26 @@ type RunListProps = {
   cancellingJobId?: string | null;
 };
 
+function toneForStatus(status: MonitorRun["status"]): "default" | "good" | "warn" | "danger" {
+  if (status === "succeeded") {
+    return "good";
+  }
+  if (status === "failed" || status === "cancelled") {
+    return "danger";
+  }
+  if (status === "no_new_imagery" || status === "partial") {
+    return "warn";
+  }
+  return "default";
+}
+
+function statusLabel(status: MonitorRun["status"]): string {
+  if (status === "no_new_imagery") {
+    return "No New Imagery (skipped)";
+  }
+  return titleCase(status);
+}
+
 export function RunList({ runs, selectedRunId, onSelectRun, onCancelJob, cancellingJobId }: RunListProps) {
   return (
     <Panel>
@@ -19,7 +39,7 @@ export function RunList({ runs, selectedRunId, onSelectRun, onCancelJob, cancell
       {!runs.length ? (
         <p className="px-3 py-4 text-sm text-argus-muted">No runs yet.</p>
       ) : (
-        <ul className="argus-scroll max-h-[320px] space-y-2 overflow-y-auto p-3">
+        <ul className="argus-scroll max-h-[360px] space-y-2 overflow-y-auto p-3">
           {runs.map((run) => {
             const active = selectedRunId === run.id;
             return (
@@ -31,19 +51,25 @@ export function RunList({ runs, selectedRunId, onSelectRun, onCancelJob, cancell
                     active ? "border-argus-accent bg-argus-accent/10" : "border-argus-border bg-argus-panel"
                   }`}
                 >
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{run.status}</p>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <Badge tone={toneForStatus(run.status)}>{statusLabel(run.status)}</Badge>
                     <span className="text-xs text-argus-muted">{fromNow(run.started_at)}</span>
                   </div>
+
                   <div className="grid grid-cols-2 gap-y-1 text-xs text-argus-muted">
-                    <span>Run type: {run.run_type}</span>
-                    <span>Events: {formatNumber(run.events_generated, 0)}</span>
+                    <span>Trigger: {run.run_type}</span>
+                    <span>Elapsed: {formatElapsed(run.started_at, run.completed_at)}</span>
                     <span>Obs found: {formatNumber(run.observations_found, 0)}</span>
                     <span>Obs inserted: {formatNumber(run.observations_inserted, 0)}</span>
-                    <span>Started: {formatDate(run.started_at)}</span>
-                    <span>Completed: {formatDate(run.completed_at)}</span>
+                    <span>Events generated: {formatNumber(run.events_generated, 0)}</span>
+                    <span>Analysis: {run.analysis_id ? run.analysis_id.slice(0, 8) : "—"}</span>
+                    <span>Impact computed: {run.impacts_computed ? "yes" : "no"}</span>
+                    <span>Exposure computed: {run.exposures_computed ? "yes" : "no"}</span>
+                    <span>Started (local): {formatDate(run.started_at)}</span>
+                    <span>Started (UTC): {formatDateUtc(run.started_at)}</span>
                   </div>
                 </button>
+
                 {run.status === "started" && onCancelJob ? (
                   <button
                     type="button"

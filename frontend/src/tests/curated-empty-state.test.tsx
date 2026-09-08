@@ -7,6 +7,6 @@ describe("CuratedExploreEmptyState", () => {
   it("renders non-fake explore fallback", () => {
     render(<CuratedExploreEmptyState />);
     expect(screen.getByText(/No curated Explore scenarios loaded yet/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open Monitor mode/i })).toHaveAttribute("href", "/monitor");
+    expect(screen.getByRole("link", { name: /Open Monitor mode/i })).toHaveAttribute("href", "/monitors");
   });
 });

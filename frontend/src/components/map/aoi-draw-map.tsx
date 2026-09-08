@@ -3,10 +3,10 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import area from "@turf/area";
-import { feature as turfFeature, polygon as turfPolygon } from "@turf/helpers";
+import { feature as turfFeature } from "@turf/helpers";
 import * as maplibregl from "maplibre-gl";
 import type { Map } from "maplibre-gl";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { MAP_STYLE } from "@/lib/constants";
 import { formatArea } from "@/lib/format";
@@ -18,6 +18,21 @@ type AoiDrawMapProps = {
 };
 
 const DRAW_SOURCE_ID = "argus-draw-source";
+
+function toFeatureCollection(geometry: GeoJsonPolygon | null) {
+  return {
+    type: "FeatureCollection" as const,
+    features: geometry
+      ? [
+          {
+            type: "Feature" as const,
+            geometry,
+            properties: {},
+          },
+        ]
+      : [],
+  };
+}
 
 export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDrawMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -34,9 +49,15 @@ export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDraw
     return area(turfFeature(geometry));
   }, [geometry]);
 
+  const updateMapSource = useCallback((value: GeoJsonPolygon | null) => {
+    const source = mapRef.current?.getSource(DRAW_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    source?.setData(toFeatureCollection(value) as never);
+  }, []);
+
   useEffect(() => {
     onGeometryChange(geometry);
-  }, [geometry, onGeometryChange]);
+    updateMapSource(geometry);
+  }, [geometry, onGeometryChange, updateMapSource]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
@@ -56,18 +77,7 @@ export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDraw
     map.on("load", async () => {
       map.addSource(DRAW_SOURCE_ID, {
         type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features: geometry
-            ? [
-                {
-                  type: "Feature",
-                  geometry,
-                  properties: {},
-                },
-              ]
-            : [],
-        },
+        data: toFeatureCollection(initialGeometry),
       });
 
       map.addLayer({
@@ -104,26 +114,16 @@ export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDraw
 
         const syncFromSnapshot = () => {
           const snapshot = draw.getSnapshot();
-          const polygon = snapshot.find((entry: any) => entry.geometry?.type === "Polygon")?.geometry;
-          if (polygon && polygon.coordinates) {
-            const casted = polygon as GeoJsonPolygon;
-            setGeometry(casted);
+          const polygon = snapshot
+            .map((entry: any) => entry.geometry)
+            .findLast((value: any) => value?.type === "Polygon" && Array.isArray(value.coordinates));
 
-            const source = map.getSource(DRAW_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-            source?.setData({
-              type: "FeatureCollection",
-              features: [{ type: "Feature", geometry: casted, properties: {} }],
-            } as never);
-          }
+          setGeometry((polygon as GeoJsonPolygon | undefined) ?? null);
         };
 
         draw.on("finish", syncFromSnapshot);
         draw.on("change", syncFromSnapshot);
-        draw.on("delete", () => {
-          setGeometry(null);
-          const source = map.getSource(DRAW_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-          source?.setData({ type: "FeatureCollection", features: [] } as never);
-        });
+        draw.on("delete", syncFromSnapshot);
       } catch {
         setDrawError("AOI drawing tools unavailable in this environment.");
       }
@@ -132,39 +132,29 @@ export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDraw
     mapRef.current = map;
 
     return () => {
-      if (drawRef.current) {
-        drawRef.current.stop?.();
-      }
+      drawRef.current?.stop?.();
+      drawRef.current = null;
       map.remove();
       mapRef.current = null;
     };
-  }, [geometry]);
+  }, [initialGeometry]);
 
   const startPolygonMode = () => {
     drawRef.current?.setMode?.("polygon");
   };
 
+  const startEditMode = () => {
+    drawRef.current?.setMode?.("select");
+  };
+
   const clearGeometry = () => {
     drawRef.current?.clear?.();
     setGeometry(null);
-    const source = mapRef.current?.getSource(DRAW_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    source?.setData({ type: "FeatureCollection", features: [] } as never);
   };
 
-  const setRectanglePreset = () => {
-    const preset: GeoJsonPolygon = turfPolygon([
-      [
-        [-80.85, 35.22],
-        [-80.84, 35.22],
-        [-80.84, 35.23],
-        [-80.85, 35.23],
-        [-80.85, 35.22],
-      ],
-    ]).geometry as GeoJsonPolygon;
-
-    setGeometry(preset);
-    const source = mapRef.current?.getSource(DRAW_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    source?.setData({ type: "FeatureCollection", features: [{ type: "Feature", geometry: preset, properties: {} }] } as never);
+  const resetGeometry = () => {
+    drawRef.current?.clear?.();
+    setGeometry(initialGeometry ?? null);
   };
 
   return (
@@ -180,6 +170,14 @@ export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDraw
         </button>
         <button
           type="button"
+          onClick={startEditMode}
+          disabled={!drawReady || !geometry}
+          className="rounded-md border border-argus-border bg-argus-panel px-3 py-1.5 text-xs text-argus-muted disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Edit polygon
+        </button>
+        <button
+          type="button"
           onClick={clearGeometry}
           className="rounded-md border border-argus-border bg-argus-panel px-3 py-1.5 text-xs text-argus-muted"
         >
@@ -187,10 +185,10 @@ export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDraw
         </button>
         <button
           type="button"
-          onClick={setRectanglePreset}
+          onClick={resetGeometry}
           className="rounded-md border border-argus-border bg-argus-panel px-3 py-1.5 text-xs text-argus-muted"
         >
-          Quick Charlotte preset
+          Reset
         </button>
         <span className="text-xs text-argus-muted">AOI area: {formatArea(areaM2)}</span>
       </div>

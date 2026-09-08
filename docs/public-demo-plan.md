@@ -15,6 +15,8 @@ Implemented in the repository:
 - Monitor workspace for AOI creation, run orchestration, event review, and intelligence panels.
 - Keyboard-forward UX primitives (command palette, shortcuts, system status surface).
 - Frontend API abstraction prepared for future curated Explore scenarios.
+- Canonical plural Monitor routes (`/monitors`, `/monitors/new`, `/monitors/[monitorId]`) with legacy `/monitor*` redirects.
+- Monitor detail workspace includes active job polling from `/jobs/{job_id}` and pipeline-stage visualization from real backend progress stages.
 
 Not yet implemented in this phase:
 
