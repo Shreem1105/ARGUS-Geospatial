@@ -15,6 +15,7 @@ import type { GeoJsonPolygon } from "@/types/geojson";
 type AoiDrawMapProps = {
   onGeometryChange: (geometry: GeoJsonPolygon | null) => void;
   initialGeometry?: GeoJsonPolygon | null;
+  heightClassName?: string;
 };
 
 const DRAW_SOURCE_ID = "argus-draw-source";
@@ -34,7 +35,7 @@ function toFeatureCollection(geometry: GeoJsonPolygon | null) {
   };
 }
 
-export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDrawMapProps) {
+export function AoiDrawMap({ onGeometryChange, initialGeometry = null, heightClassName = "h-[360px]" }: AoiDrawMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const drawRef = useRef<any>(null);
@@ -164,7 +165,7 @@ export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDraw
           type="button"
           onClick={startPolygonMode}
           disabled={!drawReady}
-          className="rounded-md border border-argus-border bg-argus-panel px-3 py-1.5 text-xs text-argus-text disabled:cursor-not-allowed disabled:opacity-40"
+          className="argus-control disabled:cursor-not-allowed disabled:opacity-40"
         >
           Draw polygon
         </button>
@@ -172,28 +173,28 @@ export function AoiDrawMap({ onGeometryChange, initialGeometry = null }: AoiDraw
           type="button"
           onClick={startEditMode}
           disabled={!drawReady || !geometry}
-          className="rounded-md border border-argus-border bg-argus-panel px-3 py-1.5 text-xs text-argus-muted disabled:cursor-not-allowed disabled:opacity-40"
+          className="argus-control disabled:cursor-not-allowed disabled:opacity-40"
         >
           Edit polygon
         </button>
         <button
           type="button"
           onClick={clearGeometry}
-          className="rounded-md border border-argus-border bg-argus-panel px-3 py-1.5 text-xs text-argus-muted"
+          className="argus-control"
         >
           Clear
         </button>
         <button
           type="button"
           onClick={resetGeometry}
-          className="rounded-md border border-argus-border bg-argus-panel px-3 py-1.5 text-xs text-argus-muted"
+          className="argus-control"
         >
           Reset
         </button>
         <span className="text-xs text-argus-muted">AOI area: {formatArea(areaM2)}</span>
       </div>
       {drawError ? <p className="text-xs text-argus-warn">{drawError}</p> : null}
-      <div ref={containerRef} className="h-[360px] w-full overflow-hidden rounded-lg border border-argus-border" />
+      <div ref={containerRef} className={`${heightClassName} w-full overflow-hidden rounded-lg border border-argus-border`} />
     </div>
   );
 }

@@ -39,7 +39,7 @@ export function RunList({ runs, selectedRunId, onSelectRun, onCancelJob, cancell
       {!runs.length ? (
         <p className="px-3 py-4 text-sm text-argus-muted">No runs yet.</p>
       ) : (
-        <ul className="argus-scroll max-h-[360px] space-y-2 overflow-y-auto p-3">
+        <ul className="argus-scroll max-h-[360px] space-y-1.5 overflow-y-auto p-3">
           {runs.map((run) => {
             const active = selectedRunId === run.id;
             return (
@@ -47,8 +47,8 @@ export function RunList({ runs, selectedRunId, onSelectRun, onCancelJob, cancell
                 <button
                   type="button"
                   onClick={() => onSelectRun?.(run.id)}
-                  className={`w-full rounded-md border px-3 py-2 text-left ${
-                    active ? "border-argus-accent bg-argus-accent/10" : "border-argus-border bg-argus-panel"
+                  className={`argus-soft-lift w-full rounded-md border px-3 py-2 text-left ${
+                    active ? "border-argus-accent bg-argus-accent/14" : "border-argus-border bg-argus-panel"
                   }`}
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">

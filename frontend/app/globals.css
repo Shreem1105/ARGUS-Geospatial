@@ -4,15 +4,21 @@
 
 :root {
   color-scheme: dark;
+  --argus-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --argus-fast: 170ms;
+  --argus-medium: 260ms;
 }
 
 html,
 body {
   margin: 0;
   min-height: 100%;
-  background: radial-gradient(circle at top left, #13243b, #0a1220 45%);
-  color: #dfe8f5;
+  color: #e6edf8;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(120vw 80vh at 10% -10%, rgba(108, 146, 221, 0.22), transparent 60%),
+    radial-gradient(90vw 70vh at 100% -20%, rgba(68, 98, 160, 0.16), transparent 65%),
+    linear-gradient(180deg, #060a12 0%, #070b12 100%);
 }
 
 * {
@@ -25,15 +31,16 @@ a {
 }
 
 .argus-panel {
-  @apply rounded-lg border border-argus-border bg-argus-panel shadow-panel;
+  @apply rounded-xl border border-argus-border/80 bg-argus-panel/95 shadow-panel;
+  backdrop-filter: blur(9px);
+}
+
+.argus-panel-muted {
+  @apply rounded-lg border border-argus-border/70 bg-argus-panelMuted/85;
 }
 
 .argus-muted {
-  color: #8ba0c0;
-}
-
-.argus-kbd {
-  @apply rounded border border-argus-border bg-argus-panelMuted px-1.5 py-0.5 text-xs text-argus-muted;
+  color: #95a5bf;
 }
 
 .argus-scroll {
@@ -51,9 +58,151 @@ a {
   border-radius: 999px;
 }
 
+.argus-kbd {
+  @apply inline-flex items-center rounded-md border border-argus-border bg-argus-panelMuted px-1.5 py-0.5 text-[11px] text-argus-muted;
+}
+
+.argus-control {
+  @apply inline-flex items-center gap-1 rounded-md border border-argus-border bg-argus-panel px-2.5 py-1.5 text-xs text-argus-muted transition-colors duration-200 ease-argus hover:border-argus-accent/50 hover:text-argus-text;
+}
+
+.argus-control-active {
+  @apply border-argus-accent/65 bg-argus-accent/15 text-argus-text;
+}
+
+.argus-field {
+  @apply rounded-md border border-argus-border bg-argus-panel px-2.5 py-1.5 text-xs text-argus-text outline-none transition-colors duration-200 ease-argus;
+}
+
+.argus-field:focus-visible {
+  @apply border-argus-accent;
+  box-shadow: 0 0 0 2px rgba(124, 173, 255, 0.2);
+}
+
+.argus-route-transition {
+  animation: argus-route-in var(--argus-medium) var(--argus-ease);
+}
+
+.argus-map-vignette {
+  background:
+    radial-gradient(circle at 50% 30%, transparent 0%, rgba(2, 6, 14, 0.1) 46%, rgba(1, 3, 8, 0.54) 100%),
+    linear-gradient(180deg, rgba(4, 9, 18, 0.05) 0%, rgba(2, 5, 10, 0.5) 100%);
+}
+
+.argus-ambient-grid {
+  background-image:
+    linear-gradient(to right, rgba(134, 164, 217, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(134, 164, 217, 0.08) 1px, transparent 1px);
+  background-size: 84px 84px;
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.9), transparent 78%);
+  animation: argus-grid-drift 38s linear infinite;
+}
+
+.argus-scan-sweep {
+  background: linear-gradient(120deg, transparent 12%, rgba(124, 173, 255, 0.08) 52%, transparent 82%);
+  animation: argus-sweep 9s var(--argus-ease) infinite;
+}
+
+.argus-status-dot {
+  box-shadow: 0 0 0 0 rgba(124, 173, 255, 0.65);
+  animation: argus-dot-pulse 2.4s ease-out infinite;
+}
+
+.argus-soft-lift {
+  transition:
+    transform var(--argus-fast) var(--argus-ease),
+    border-color var(--argus-fast) var(--argus-ease),
+    background-color var(--argus-fast) var(--argus-ease);
+}
+
+.argus-soft-lift:hover {
+  transform: translateY(-1px);
+}
+
+.argus-skeleton {
+  position: relative;
+  overflow: hidden;
+}
+
+.argus-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  animation: argus-shimmer 1.6s infinite;
+}
+
 .maplibregl-popup-content {
-  background: #0f1a2b !important;
-  color: #dfe8f5;
-  border: 1px solid #27354e;
-  border-radius: 0.5rem;
+  background: #0f1624 !important;
+  color: #e6edf8;
+  border: 1px solid #2a3850;
+  border-radius: 0.65rem;
+}
+
+.maplibregl-ctrl-group {
+  border: 1px solid #2a3850 !important;
+  box-shadow: 0 8px 24px rgba(2, 6, 14, 0.6) !important;
+}
+
+.maplibregl-ctrl button {
+  background: #101a29 !important;
+  color: #dce7fb !important;
+}
+
+@keyframes argus-route-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes argus-grid-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(42px, 42px, 0);
+  }
+}
+
+@keyframes argus-sweep {
+  from {
+    transform: translateX(-20%);
+  }
+  to {
+    transform: translateX(20%);
+  }
+}
+
+@keyframes argus-dot-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(124, 173, 255, 0.44);
+  }
+  100% {
+    box-shadow: 0 0 0 11px rgba(124, 173, 255, 0);
+  }
+}
+
+@keyframes argus-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .argus-route-transition,
+  .argus-ambient-grid,
+  .argus-scan-sweep,
+  .argus-status-dot,
+  .argus-soft-lift,
+  .argus-skeleton::after {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
 }

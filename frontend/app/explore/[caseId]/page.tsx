@@ -17,7 +17,7 @@ export default async function ExploreCasePage({ params }: ExploreCasePageProps) 
       return (
         <Panel className="p-6">
           <EmptyState
-            title="No curated cases are available yet"
+            title="No curated ARGUS case studies have been published yet."
             detail="This route is ready for curated, precomputed public case studies. No case data is fabricated when the curated catalog is empty."
             action={
               <div className="flex gap-2">

@@ -9,18 +9,22 @@ export const DEFAULT_EVENT_BUFFER_M = 100;
 export const MAP_STYLE: StyleSpecification = {
   version: 8,
   sources: {
-    osm: {
+    darkBase: {
       type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tiles: [
+        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+      ],
       tileSize: 256,
-      attribution: "© OpenStreetMap contributors",
+      attribution: "© OpenStreetMap contributors © CARTO",
     },
   },
   layers: [
     {
-      id: "osm-base",
+      id: "dark-base",
       type: "raster",
-      source: "osm",
+      source: "darkBase",
       minzoom: 0,
       maxzoom: 22,
     },

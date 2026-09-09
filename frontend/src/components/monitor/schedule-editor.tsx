@@ -46,7 +46,7 @@ export function ScheduleEditor({ schedule, onSave, saving }: ScheduleEditorProps
               max={168}
               value={intervalHours}
               onChange={(e) => setIntervalHours(Number(e.target.value))}
-              className="w-full rounded-md border border-argus-border bg-argus-panel px-3 py-2 text-sm"
+              className="argus-field w-full"
             />
           </label>
           <label className="space-y-1 text-xs text-argus-muted">
@@ -57,7 +57,7 @@ export function ScheduleEditor({ schedule, onSave, saving }: ScheduleEditorProps
               max={365}
               value={lookbackDays}
               onChange={(e) => setLookbackDays(Number(e.target.value))}
-              className="w-full rounded-md border border-argus-border bg-argus-panel px-3 py-2 text-sm"
+              className="argus-field w-full"
             />
           </label>
           <label className="space-y-1 text-xs text-argus-muted col-span-2">
@@ -68,7 +68,7 @@ export function ScheduleEditor({ schedule, onSave, saving }: ScheduleEditorProps
               max={100}
               value={maxCloudCover ?? 40}
               onChange={(e) => setMaxCloudCover(Number(e.target.value))}
-              className="w-full rounded-md border border-argus-border bg-argus-panel px-3 py-2 text-sm"
+              className="argus-field w-full"
             />
           </label>
         </div>

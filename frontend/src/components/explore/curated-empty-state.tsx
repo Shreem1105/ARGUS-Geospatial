@@ -5,8 +5,8 @@ import { EmptyState } from "@/components/ui";
 export function CuratedExploreEmptyState() {
   return (
     <EmptyState
-      title="No curated Explore scenarios loaded yet"
-      detail="Explore mode is ready and connected to real ARGUS data. Once curated precomputed scenarios are published, they will appear here for instant public walkthroughs."
+      title="No curated ARGUS case studies have been published yet."
+      detail="Explore mode still uses real persisted ARGUS monitor/event intelligence data. Curated case stories will appear here when published."
       action={
         <Link
           href="/monitors"

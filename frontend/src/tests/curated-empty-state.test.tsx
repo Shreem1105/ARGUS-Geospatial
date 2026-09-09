@@ -6,7 +6,7 @@ import { CuratedExploreEmptyState } from "@/components/explore/curated-empty-sta
 describe("CuratedExploreEmptyState", () => {
   it("renders non-fake explore fallback", () => {
     render(<CuratedExploreEmptyState />);
-    expect(screen.getByText(/No curated Explore scenarios loaded yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/No curated ARGUS case studies have been published yet/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open Monitor mode/i })).toHaveAttribute("href", "/monitors");
   });
 });

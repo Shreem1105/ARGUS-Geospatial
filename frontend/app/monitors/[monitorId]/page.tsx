@@ -10,7 +10,8 @@ import { api } from "@/api/endpoints";
 import { EventIntelligencePanel } from "@/components/events/event-intelligence-panel";
 import { EventList } from "@/components/events/event-list";
 import { ArgusMap } from "@/components/map/argus-map";
-import { BeforeAfterViewer } from "@/components/monitor/before-after-viewer";
+import { BeforeAfterViewer, type MonitorLayerMode } from "@/components/monitor/before-after-viewer";
+import { ObservationTimeline } from "@/components/monitor/observation-timeline";
 import { ObservationBrowser } from "@/components/monitor/observation-browser";
 import { PipelineVisualizer } from "@/components/monitor/pipeline-visualizer";
 import { ScheduleEditor } from "@/components/monitor/schedule-editor";
@@ -39,6 +40,7 @@ import {
 import { useUrlState } from "@/hooks/url-state";
 import { copyText, downloadJson } from "@/lib/export";
 import { formatArea, formatMeters, formatNumber, formatPercent, fromNow } from "@/lib/format";
+import { useUiState } from "@/state/ui-state";
 
 export default function MonitorDetailPage() {
   const params = useParams<{ monitorId: string }>();
@@ -54,6 +56,10 @@ export default function MonitorDetailPage() {
   const [maxCloudCover, setMaxCloudCover] = useState(40);
   const [threshold, setThreshold] = useState(0.12);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [layerMode, setLayerMode] = useState<MonitorLayerMode>("event_polygons");
+  const [mapFocusNonce, setMapFocusNonce] = useState(0);
+
+  const { panelState, setPanelOpen } = useUiState();
 
   const selectedEventId = values.eventId ?? null;
   const selectedRunId = values.runId ?? null;
@@ -140,6 +146,9 @@ export default function MonitorDetailPage() {
   const afterPreviewUrl = selectedRun?.after_observation_id
     ? api.preparedArtifactUrl(monitorId, selectedRun.after_observation_id, "preview")
     : null;
+  const changePreviewUrl = selectedRun?.analysis_id
+    ? api.analysisArtifactUrl(monitorId, selectedRun.analysis_id, "preview")
+    : null;
   const changeMaskUrl = selectedRun?.analysis_id
     ? api.analysisArtifactUrl(monitorId, selectedRun.analysis_id, "change-mask")
     : null;
@@ -207,6 +216,36 @@ export default function MonitorDetailPage() {
     selectedJobId,
   ]);
 
+  useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ direction: "prev" | "next" }>).detail;
+      const entries = eventsQuery.data ?? [];
+
+      if (!entries.length) {
+        return;
+      }
+
+      const currentIndex = Math.max(0, entries.findIndex((item) => item.id === selectedEventId));
+      const offset = detail?.direction === "prev" ? -1 : 1;
+      const nextIndex = (currentIndex + offset + entries.length) % entries.length;
+      const next = entries[nextIndex];
+
+      setValues({ eventId: next.id });
+      setPanelOpen("right", true);
+      setMapFocusNonce((current) => current + 1);
+    };
+
+    const onFitSelection = () => setMapFocusNonce((current) => current + 1);
+
+    window.addEventListener("argus:event-nav", onNavigate as EventListener);
+    window.addEventListener("argus:fit-selection", onFitSelection);
+
+    return () => {
+      window.removeEventListener("argus:event-nav", onNavigate as EventListener);
+      window.removeEventListener("argus:fit-selection", onFitSelection);
+    };
+  }, [eventsQuery.data, selectedEventId, setPanelOpen, setValues]);
+
   const shareUrl = useMemo(() => {
     if (!selectedEvent) {
       return null;
@@ -236,6 +275,18 @@ export default function MonitorDetailPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={layerMode}
+              onChange={(event) => setLayerMode(event.target.value as MonitorLayerMode)}
+              className="argus-field"
+              aria-label="Select monitor layer mode"
+            >
+              <option value="event_polygons">Event polygons</option>
+              <option value="before_imagery">Before imagery</option>
+              <option value="after_imagery">After imagery</option>
+              <option value="change_preview">Change preview</option>
+              <option value="change_mask">Change mask</option>
+            </select>
             <button
               type="button"
               onClick={async () => {
@@ -267,9 +318,23 @@ export default function MonitorDetailPage() {
                 void runsQuery.refetch();
                 void observationsQuery.refetch();
               }}
-              className="inline-flex items-center gap-1 rounded-md border border-argus-border bg-argus-panel px-3 py-1.5 text-xs text-argus-muted"
+              className="argus-control"
             >
               <RefreshCw size={12} /> Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanelOpen("right", !panelState.right)}
+              className={`argus-control ${panelState.right ? "argus-control-active" : ""}`}
+            >
+              {panelState.right ? "Hide" : "Show"} intelligence
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanelOpen("timeline", !panelState.timeline)}
+              className={`argus-control ${panelState.timeline ? "argus-control-active" : ""}`}
+            >
+              {panelState.timeline ? "Hide" : "Show"} timeline
             </button>
           </div>
         </div>
@@ -290,7 +355,7 @@ export default function MonitorDetailPage() {
               max={365}
               value={lookbackDays}
               onChange={(event) => setLookbackDays(Number(event.target.value))}
-              className="mt-1 w-full rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs"
+              className="argus-field mt-1 w-full"
             />
           </label>
           <label className="text-[11px] text-argus-muted">
@@ -301,7 +366,7 @@ export default function MonitorDetailPage() {
               max={100}
               value={maxCloudCover}
               onChange={(event) => setMaxCloudCover(Number(event.target.value))}
-              className="mt-1 w-full rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs"
+              className="argus-field mt-1 w-full"
             />
           </label>
           <label className="text-[11px] text-argus-muted">
@@ -313,7 +378,7 @@ export default function MonitorDetailPage() {
               step={0.01}
               value={threshold}
               onChange={(event) => setThreshold(Number(event.target.value))}
-              className="mt-1 w-full rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs"
+              className="argus-field mt-1 w-full"
             />
           </label>
           <label className="text-[11px] text-argus-muted">
@@ -322,7 +387,7 @@ export default function MonitorDetailPage() {
               type="date"
               value={searchStart}
               onChange={(event) => setSearchStart(event.target.value)}
-              className="mt-1 w-full rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs"
+              className="argus-field mt-1 w-full"
             />
           </label>
           <label className="text-[11px] text-argus-muted">
@@ -331,7 +396,7 @@ export default function MonitorDetailPage() {
               type="date"
               value={searchEnd}
               onChange={(event) => setSearchEnd(event.target.value)}
-              className="mt-1 w-full rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs"
+              className="argus-field mt-1 w-full"
             />
           </label>
           <label className="text-[11px] text-argus-muted">
@@ -342,7 +407,7 @@ export default function MonitorDetailPage() {
               max={100}
               value={searchCloud}
               onChange={(event) => setSearchCloud(Number(event.target.value))}
-              className="mt-1 w-full rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs"
+              className="argus-field mt-1 w-full"
             />
           </label>
           <label className="text-[11px] text-argus-muted">
@@ -353,7 +418,7 @@ export default function MonitorDetailPage() {
               max={100}
               value={searchLimit}
               onChange={(event) => setSearchLimit(Number(event.target.value))}
-              className="mt-1 w-full rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs"
+              className="argus-field mt-1 w-full"
             />
           </label>
         </div>
@@ -375,7 +440,7 @@ export default function MonitorDetailPage() {
                 setActionError((error as Error).message);
               }
             }}
-            className="rounded border border-argus-border bg-argus-panel px-3 py-1 text-xs text-argus-muted"
+            className="argus-control"
           >
             Search observations
           </button>
@@ -391,28 +456,28 @@ export default function MonitorDetailPage() {
                 setActionError((error as Error).message);
               }
             }}
-            className="rounded border border-argus-border bg-argus-panel px-3 py-1 text-xs text-argus-muted"
+            className="argus-control"
           >
             Refresh context
           </button>
           <button
             type="button"
             onClick={() => datasetRefreshMutations.refreshPopulation.mutate()}
-            className="rounded border border-argus-border bg-argus-panel px-3 py-1 text-xs text-argus-muted"
+            className="argus-control"
           >
             Refresh population
           </button>
           <button
             type="button"
             onClick={() => datasetRefreshMutations.refreshLandCover.mutate()}
-            className="rounded border border-argus-border bg-argus-panel px-3 py-1 text-xs text-argus-muted"
+            className="argus-control"
           >
             Refresh land cover
           </button>
           <button
             type="button"
             onClick={() => datasetRefreshMutations.refreshEnvironment.mutate()}
-            className="rounded border border-argus-border bg-argus-panel px-3 py-1 text-xs text-argus-muted"
+            className="argus-control"
           >
             Refresh environment
           </button>
@@ -441,220 +506,244 @@ export default function MonitorDetailPage() {
         </Panel>
       ) : null}
 
-      <PanelGroup orientation="horizontal" className="min-h-[760px] overflow-hidden rounded-lg border border-argus-border">
-        <ResizePanel defaultSize={62} minSize={40}>
+      <PanelGroup orientation="horizontal" className="min-h-[76vh] overflow-hidden rounded-xl border border-argus-border shadow-workspace">
+        <ResizePanel defaultSize={panelState.right ? 68 : 100} minSize={42}>
           <ArgusMap
             monitor={monitor}
             events={eventsQuery.data ?? []}
             selectedEventId={selectedEvent?.id ?? null}
-            onSelectEvent={(eventId) => setValues({ eventId })}
-            className="h-full min-h-[760px]"
+            onSelectEvent={(eventId) => {
+              setValues({ eventId });
+              setPanelOpen("right", true);
+              setMapFocusNonce((current) => current + 1);
+            }}
+            className="h-full min-h-[76vh]"
+            showEvents={layerMode === "event_polygons"}
+            focusNonce={mapFocusNonce}
           />
         </ResizePanel>
 
-        <PanelResizeHandle className="w-1 bg-argus-border" />
+        {panelState.right ? (
+          <>
+            <PanelResizeHandle className="w-1 bg-argus-border" />
 
-        <ResizePanel defaultSize={38} minSize={28}>
-          <div className="argus-scroll grid h-full gap-2 overflow-y-auto bg-argus-bg p-2">
-            <Panel className="overflow-hidden">
-              <PanelHeader
-                title="Events"
-                subtitle="Filterable event list"
-                actions={
-                  <div className="flex gap-1 text-xs">
-                    <select
-                      value={values.severity ?? ""}
-                      onChange={(event) => setValues({ severity: event.target.value || null })}
-                      className="rounded border border-argus-border bg-argus-panel px-1"
-                    >
-                      <option value="">severity</option>
-                      <option value="low">low</option>
-                      <option value="medium">medium</option>
-                      <option value="high">high</option>
-                      <option value="critical">critical</option>
-                    </select>
-                    <select
-                      value={values.eventStatus ?? ""}
-                      onChange={(event) => setValues({ eventStatus: event.target.value || null })}
-                      className="rounded border border-argus-border bg-argus-panel px-1"
-                    >
-                      <option value="">status</option>
-                      <option value="new">new</option>
-                      <option value="reviewed">reviewed</option>
-                      <option value="dismissed">dismissed</option>
-                      <option value="confirmed">confirmed</option>
-                    </select>
-                  </div>
-                }
-              />
-              <EventList
-                events={eventsQuery.data ?? []}
-                selectedEventId={selectedEventId}
-                onSelectEvent={(eventId) => setValues({ eventId })}
-              />
-            </Panel>
+            <ResizePanel defaultSize={32} minSize={24}>
+              <div className="argus-scroll grid h-full gap-2 overflow-y-auto bg-argus-bg p-2">
+                <Panel className="overflow-hidden">
+                  <PanelHeader
+                    title="Events"
+                    subtitle="Filterable event list"
+                    actions={
+                      <div className="flex gap-1 text-xs">
+                        <select
+                          value={values.severity ?? ""}
+                          onChange={(event) => setValues({ severity: event.target.value || null })}
+                          className="argus-field"
+                        >
+                          <option value="">severity</option>
+                          <option value="low">low</option>
+                          <option value="medium">medium</option>
+                          <option value="high">high</option>
+                          <option value="critical">critical</option>
+                        </select>
+                        <select
+                          value={values.eventStatus ?? ""}
+                          onChange={(event) => setValues({ eventStatus: event.target.value || null })}
+                          className="argus-field"
+                        >
+                          <option value="">status</option>
+                          <option value="new">new</option>
+                          <option value="reviewed">reviewed</option>
+                          <option value="dismissed">dismissed</option>
+                          <option value="confirmed">confirmed</option>
+                        </select>
+                      </div>
+                    }
+                  />
+                  <EventList
+                    events={eventsQuery.data ?? []}
+                    selectedEventId={selectedEventId}
+                    onSelectEvent={(eventId) => {
+                      setValues({ eventId });
+                      setMapFocusNonce((current) => current + 1);
+                    }}
+                  />
+                </Panel>
 
-            <EventIntelligencePanel
-              loading={intelligenceQuery.isLoading}
-              error={intelligenceQuery.error ? (intelligenceQuery.error as Error).message : null}
-              intelligence={intelligenceQuery.data ?? null}
-              event={selectedEvent}
-            />
-
-            <Panel className="p-3">
-              <PanelHeader
-                title="Event Actions"
-                subtitle="Review, compute impact/exposure, and export"
-                actions={
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      disabled={!selectedEvent}
-                      className="rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs"
-                      onClick={async () => {
-                        if (!selectedEvent) {
-                          return;
-                        }
-                        const payload = JSON.stringify(selectedEvent, null, 2);
-                        const copied = await copyText(payload);
-                        if (!copied) {
-                          setActionError("Unable to copy event JSON.");
-                        }
-                      }}
-                    >
-                      <Link2 size={12} className="inline" /> Copy event
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!selectedEvent}
-                      className="rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs"
-                      onClick={() => {
-                        if (!selectedEvent) {
-                          return;
-                        }
-                        downloadJson(`event-${selectedEvent.id}.json`, selectedEvent);
-                      }}
-                    >
-                      <Download size={12} className="inline" /> Export
-                    </button>
-                  </div>
-                }
-              />
-              {selectedEvent ? (
-                <div className="space-y-2 text-xs">
-                  <p>Scientific severity: {selectedEvent.severity}</p>
-                  <p>Confidence: {formatPercent(selectedEvent.confidence * 100)}</p>
-                  <p>Area: {formatArea(selectedEvent.area_m2)}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => eventMutations.patchStatus.mutate({ eventId: selectedEvent.id, status: "reviewed" })}
-                      className="rounded border border-argus-border bg-argus-panel px-2 py-1"
-                    >
-                      Mark reviewed
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => eventMutations.computeImpact.mutate({ eventId: selectedEvent.id, nearbyBufferM: 100 })}
-                      className="rounded border border-argus-border bg-argus-panel px-2 py-1"
-                    >
-                      Compute impact
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        eventMutations.computeExposure.mutate({ eventId: selectedEvent.id, nearbyBufferM: 500 })
-                      }
-                      className="rounded border border-argus-border bg-argus-panel px-2 py-1"
-                    >
-                      Compute exposure
-                    </button>
-                  </div>
-                  {shareUrl ? <p className="break-all text-argus-muted">Share: {shareUrl}</p> : null}
-                </div>
-              ) : (
-                <p className="text-xs text-argus-muted">Select an event to run actions.</p>
-              )}
-            </Panel>
-
-            <RunList
-              runs={runsQuery.data ?? []}
-              selectedRunId={selectedRun?.id ?? null}
-              onSelectRun={(runId) => setValues({ runId })}
-              onCancelJob={(jobId) => runMutations.cancelJob.mutate(jobId)}
-              cancellingJobId={runMutations.cancelJob.variables ?? null}
-            />
-
-            <PipelineVisualizer run={selectedRun} job={jobQuery.data ?? null} />
-
-            <ObservationBrowser
-              observations={observationsQuery.data ?? []}
-              selectedObservationId={selectedObservationId}
-              onSelectObservation={(observationId) => setValues({ observationId })}
-              onPrepareObservation={(observationId) =>
-                observationMutations.prepareObservation.mutate({ observationId, forceReprocess: false })
-              }
-              preparingObservationId={observationMutations.prepareObservation.variables?.observationId ?? null}
-            />
-
-            <BeforeAfterViewer
-              beforePreviewUrl={beforePreparedQuery.data?.status === "ready" ? beforePreviewUrl : null}
-              afterPreviewUrl={afterPreparedQuery.data?.status === "ready" ? afterPreviewUrl : null}
-              changeMaskUrl={selectedRunAnalysis.data?.status === "ready" ? changeMaskUrl : null}
-              beforeItemId={beforeObservation?.item_id ?? null}
-              afterItemId={afterObservation?.item_id ?? null}
-              beforeAcquiredAt={beforeObservation?.acquired_at ?? null}
-              afterAcquiredAt={afterObservation?.acquired_at ?? null}
-            />
-
-            <Panel className="p-3">
-              <PanelHeader title="Context + Exposure Summary" subtitle="Monitor-level impact and dataset state" />
-              <div className="grid gap-2 text-xs md:grid-cols-2">
-                <Metric
-                  label="Context features"
-                  value={formatNumber(contextSummaryQuery.data?.total_features ?? 0, 0)}
-                  hint={contextSummaryQuery.data?.attribution ?? ""}
+                <EventIntelligencePanel
+                  loading={intelligenceQuery.isLoading}
+                  error={intelligenceQuery.error ? (intelligenceQuery.error as Error).message : null}
+                  intelligence={intelligenceQuery.data ?? null}
+                  event={selectedEvent}
                 />
-                <Metric
-                  label="Events with roads"
-                  value={formatNumber(impactSummaryQuery.data?.events_with_intersecting_roads ?? 0, 0)}
-                  hint={`Road length ${formatMeters(impactSummaryQuery.data?.total_intersecting_road_length_m ?? 0)}`}
+
+                <Panel className="p-3">
+                  <PanelHeader
+                    title="Event Actions"
+                    subtitle="Review, compute impact/exposure, and export"
+                    actions={
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          disabled={!selectedEvent}
+                          className="argus-control"
+                          onClick={async () => {
+                            if (!selectedEvent) {
+                              return;
+                            }
+                            const payload = JSON.stringify(selectedEvent, null, 2);
+                            const copied = await copyText(payload);
+                            if (!copied) {
+                              setActionError("Unable to copy event JSON.");
+                            }
+                          }}
+                        >
+                          <Link2 size={12} className="inline" /> Copy event
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!selectedEvent}
+                          className="argus-control"
+                          onClick={() => {
+                            if (!selectedEvent) {
+                              return;
+                            }
+                            downloadJson(`event-${selectedEvent.id}.json`, selectedEvent);
+                          }}
+                        >
+                          <Download size={12} className="inline" /> Export
+                        </button>
+                      </div>
+                    }
+                  />
+                  {selectedEvent ? (
+                    <div className="space-y-2 text-xs">
+                      <p>Scientific severity: {selectedEvent.severity}</p>
+                      <p>Confidence: {formatPercent(selectedEvent.confidence * 100)}</p>
+                      <p>Area: {formatArea(selectedEvent.area_m2)}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => eventMutations.patchStatus.mutate({ eventId: selectedEvent.id, status: "reviewed" })}
+                          className="argus-control"
+                        >
+                          Mark reviewed
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => eventMutations.computeImpact.mutate({ eventId: selectedEvent.id, nearbyBufferM: 100 })}
+                          className="argus-control"
+                        >
+                          Compute impact
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => eventMutations.computeExposure.mutate({ eventId: selectedEvent.id, nearbyBufferM: 500 })}
+                          className="argus-control"
+                        >
+                          Compute exposure
+                        </button>
+                      </div>
+                      {shareUrl ? <p className="break-all text-argus-muted">Share: {shareUrl}</p> : null}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-argus-muted">Select an event to run actions.</p>
+                  )}
+                </Panel>
+
+                <RunList
+                  runs={runsQuery.data ?? []}
+                  selectedRunId={selectedRun?.id ?? null}
+                  onSelectRun={(runId) => setValues({ runId })}
+                  onCancelJob={(jobId) => runMutations.cancelJob.mutate(jobId)}
+                  cancellingJobId={runMutations.cancelJob.variables ?? null}
                 />
-                <Metric
-                  label="Events with buildings"
-                  value={formatNumber(impactSummaryQuery.data?.events_with_intersecting_buildings ?? 0, 0)}
-                  hint={`Area ${formatArea(impactSummaryQuery.data?.total_building_intersection_area_m2 ?? 0)}`}
+
+                <PipelineVisualizer run={selectedRun} job={jobQuery.data ?? null} />
+
+                <ObservationBrowser
+                  observations={observationsQuery.data ?? []}
+                  selectedObservationId={selectedObservationId}
+                  onSelectObservation={(observationId) => setValues({ observationId })}
+                  onPrepareObservation={(observationId) =>
+                    observationMutations.prepareObservation.mutate({ observationId, forceReprocess: false })
+                  }
+                  preparingObservationId={observationMutations.prepareObservation.variables?.observationId ?? null}
                 />
-                <Metric
-                  label="Population exposure"
-                  value={formatNumber(exposureSummaryQuery.data?.estimated_total_population_exposure_event_level_sum ?? 0, 0)}
-                  hint={`Events ${formatNumber(exposureSummaryQuery.data?.events_with_population_exposure ?? 0, 0)}`}
+
+                <BeforeAfterViewer
+                  beforePreviewUrl={beforePreparedQuery.data?.status === "ready" ? beforePreviewUrl : null}
+                  afterPreviewUrl={afterPreparedQuery.data?.status === "ready" ? afterPreviewUrl : null}
+                  changePreviewUrl={selectedRunAnalysis.data?.status === "ready" ? changePreviewUrl : null}
+                  changeMaskUrl={selectedRunAnalysis.data?.status === "ready" ? changeMaskUrl : null}
+                  beforeItemId={beforeObservation?.item_id ?? null}
+                  afterItemId={afterObservation?.item_id ?? null}
+                  beforeAcquiredAt={beforeObservation?.acquired_at ?? null}
+                  afterAcquiredAt={afterObservation?.acquired_at ?? null}
+                  activeLayer={layerMode}
+                  onLayerChange={setLayerMode}
+                />
+
+                <Panel className="p-3">
+                  <PanelHeader title="Context + Exposure Summary" subtitle="Monitor-level impact and dataset state" />
+                  <div className="grid gap-2 text-xs md:grid-cols-2">
+                    <Metric
+                      label="Context features"
+                      value={formatNumber(contextSummaryQuery.data?.total_features ?? 0, 0)}
+                      hint={contextSummaryQuery.data?.attribution ?? ""}
+                    />
+                    <Metric
+                      label="Events with roads"
+                      value={formatNumber(impactSummaryQuery.data?.events_with_intersecting_roads ?? 0, 0)}
+                      hint={`Road length ${formatMeters(impactSummaryQuery.data?.total_intersecting_road_length_m ?? 0)}`}
+                    />
+                    <Metric
+                      label="Events with buildings"
+                      value={formatNumber(impactSummaryQuery.data?.events_with_intersecting_buildings ?? 0, 0)}
+                      hint={`Area ${formatArea(impactSummaryQuery.data?.total_building_intersection_area_m2 ?? 0)}`}
+                    />
+                    <Metric
+                      label="Population exposure"
+                      value={formatNumber(exposureSummaryQuery.data?.estimated_total_population_exposure_event_level_sum ?? 0, 0)}
+                      hint={`Events ${formatNumber(exposureSummaryQuery.data?.events_with_population_exposure ?? 0, 0)}`}
+                    />
+                  </div>
+
+                  <div className="mt-3 text-xs text-argus-muted">
+                    <p>Context rows loaded: {formatNumber(contextFeaturesQuery.data?.length ?? 0, 0)}</p>
+                    <p>Analyses tracked: {formatNumber(analysesById.size, 0)}</p>
+                    <p>Datasets: {formatNumber(datasetsQuery.data?.datasets.length ?? 0, 0)}</p>
+                  </div>
+                </Panel>
+
+                <ScheduleEditor
+                  schedule={scheduleQuery.data ?? null}
+                  saving={scheduleMutation.isPending}
+                  onSave={async (payload) => {
+                    setActionError(null);
+                    try {
+                      await scheduleMutation.mutateAsync(payload);
+                      await scheduleQuery.refetch();
+                    } catch (error) {
+                      setActionError((error as Error).message);
+                    }
+                  }}
                 />
               </div>
-
-              <div className="mt-3 text-xs text-argus-muted">
-                <p>Context rows loaded: {formatNumber(contextFeaturesQuery.data?.length ?? 0, 0)}</p>
-                <p>Analyses tracked: {formatNumber(analysesById.size, 0)}</p>
-                <p>Datasets: {formatNumber(datasetsQuery.data?.datasets.length ?? 0, 0)}</p>
-              </div>
-            </Panel>
-
-            <ScheduleEditor
-              schedule={scheduleQuery.data ?? null}
-              saving={scheduleMutation.isPending}
-              onSave={async (payload) => {
-                setActionError(null);
-                try {
-                  await scheduleMutation.mutateAsync(payload);
-                  await scheduleQuery.refetch();
-                } catch (error) {
-                  setActionError((error as Error).message);
-                }
-              }}
-            />
-          </div>
-        </ResizePanel>
+            </ResizePanel>
+          </>
+        ) : null}
       </PanelGroup>
+
+      {panelState.timeline ? (
+        <ObservationTimeline
+          observations={observationsQuery.data ?? []}
+          selectedObservationId={selectedObservationId}
+          beforeObservationId={selectedRun?.before_observation_id ?? null}
+          afterObservationId={selectedRun?.after_observation_id ?? null}
+          onSelectObservation={(observationId) => setValues({ observationId })}
+        />
+      ) : null}
     </div>
   );
 }

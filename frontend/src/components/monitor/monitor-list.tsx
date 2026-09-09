@@ -19,7 +19,7 @@ export function MonitorList({ monitors, summaries = {}, selectedMonitorId }: Mon
   }
 
   return (
-    <ul className="argus-scroll max-h-[560px] space-y-2 overflow-y-auto p-3">
+    <ul className="argus-scroll max-h-[560px] space-y-1.5 overflow-y-auto p-3">
       {monitors.map((monitor) => {
         const summary = summaries[monitor.id];
         const active = selectedMonitorId === monitor.id;
@@ -27,9 +27,9 @@ export function MonitorList({ monitors, summaries = {}, selectedMonitorId }: Mon
           <li key={monitor.id}>
             <Link
               href={`/monitors/${monitor.id}`}
-              className={`block rounded-md border p-3 transition ${
+              className={`argus-soft-lift block rounded-md border p-3 transition ${
                 active
-                  ? "border-argus-accent bg-argus-accent/10"
+                  ? "border-argus-accent bg-argus-accent/14"
                   : "border-argus-border bg-argus-panel hover:border-argus-muted/50"
               }`}
             >

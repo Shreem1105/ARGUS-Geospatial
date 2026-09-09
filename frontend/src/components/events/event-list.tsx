@@ -25,7 +25,7 @@ export function EventList({ events, selectedEventId, onSelectEvent }: EventListP
   }
 
   return (
-    <ul className="argus-scroll max-h-[420px] space-y-2 overflow-y-auto p-3">
+    <ul className="argus-scroll max-h-[420px] space-y-1.5 overflow-y-auto p-3">
       {events.map((event) => {
         const selected = selectedEventId === event.id;
 
@@ -35,17 +35,17 @@ export function EventList({ events, selectedEventId, onSelectEvent }: EventListP
               type="button"
               onClick={() => onSelectEvent?.(event.id)}
               className={clsx(
-                "w-full rounded-md border px-3 py-2 text-left transition",
+                "argus-soft-lift w-full rounded-md border px-3 py-2 text-left transition",
                 selected
-                  ? "border-argus-accent bg-argus-accent/10"
+                  ? "border-argus-accent bg-argus-accent/14"
                   : "border-argus-border bg-argus-panel hover:border-argus-muted/50",
               )}
             >
-              <div className="mb-1 flex items-center justify-between gap-2">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
                 <p className="truncate text-sm font-semibold">Event {event.id.slice(0, 8)}</p>
                 <Badge tone={severityTone[event.severity] ?? "default"}>{event.severity}</Badge>
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-argus-muted">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-argus-muted">
                 <span>Confidence: {formatPercent(event.confidence * 100, 1)}</span>
                 <span>Status: {event.status}</span>
                 <span>Area: {formatArea(event.area_m2)}</span>

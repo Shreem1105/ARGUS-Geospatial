@@ -18,15 +18,15 @@ export default function NewMonitorPage() {
   const { createMonitor } = useMonitorMutations();
 
   return (
-    <div className="grid gap-4 xl:grid-cols-3">
-      <div className="xl:col-span-2 space-y-3">
+    <div className="grid gap-4 xl:grid-cols-4">
+      <div className="space-y-3 xl:col-span-3">
         <Panel className="p-3">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-lg font-semibold">Create Monitor</h1>
-              <p className="text-xs text-argus-muted">Draw a valid AOI polygon and create a monitor through the real API</p>
+              <p className="text-xs text-argus-muted">Map-first guided setup for a real AOI-backed monitor workflow</p>
             </div>
-            <Link href="/monitors" className="inline-flex items-center gap-1 rounded border border-argus-border bg-argus-panel px-2 py-1 text-xs text-argus-muted">
+            <Link href="/monitors" className="argus-control inline-flex items-center gap-1">
               <ArrowLeft size={12} /> Back
             </Link>
           </div>
@@ -50,7 +50,7 @@ export default function NewMonitorPage() {
         {createMonitor.isError && !createError ? <ErrorState detail="Unable to create monitor" /> : null}
       </div>
 
-      <Panel className="overflow-hidden">
+      <Panel className="overflow-hidden xl:col-span-1">
         <PanelHeader title="Recent Monitors" subtitle="Quick navigation after creation" />
         <MonitorList monitors={monitorsQuery.data ?? []} />
       </Panel>
