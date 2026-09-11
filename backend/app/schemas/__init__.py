@@ -99,6 +99,12 @@ from app.schemas.prepared_observation import (
     PreparedObservationStatus,
     PrepareObservationRequest,
 )
+from app.schemas.semantic import (
+    AnalysisSemanticComputeResponse,
+    ChangeEventSemanticAnalysisRead,
+    EventSemanticComputeResponse,
+    SemanticLabel,
+)
 
 __all__ = [
     "ChangeAnalysisAutoRequest",
@@ -171,10 +177,14 @@ __all__ = [
     "PrepareObservationRequest",
     "AdministrativeAreaContext",
     "AnalysisImpactComputeResponse",
+    "AnalysisSemanticComputeResponse",
     "BuildingImpactSummary",
     "EventImpactComputeResponse",
     "EventImpactSummaryRead",
+    "EventSemanticComputeResponse",
     "RoadImpactSummary",
+    "ChangeEventSemanticAnalysisRead",
+    "SemanticLabel",
     "SatelliteObservationRead",
     "WorkerHealthRead",
     "WaterwayImpactSummary",

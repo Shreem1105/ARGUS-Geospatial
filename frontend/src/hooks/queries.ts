@@ -66,6 +66,7 @@ export function useMonitorEventsQuery(
     offset?: number;
     severity?: string;
     status?: string;
+    semanticLabel?: string;
     minConfidence?: number;
     minAreaM2?: number;
     analysisId?: string;
@@ -300,6 +301,18 @@ export function useEventMutations(monitorId: string | null) {
     },
   });
 
+  const computeSemantics = useMutation({
+    mutationFn: ({ eventId, forceRecompute }: { eventId: string; forceRecompute?: boolean }) =>
+      api.computeEventSemantics(monitorId as string, eventId, forceRecompute),
+    onSuccess: (_, { eventId }) => {
+      if (!monitorId) {
+        return;
+      }
+      qc.invalidateQueries({ queryKey: qk.eventIntelligence(monitorId, eventId) });
+      qc.invalidateQueries({ queryKey: ["monitor-events", monitorId] });
+    },
+  });
+
   const computeExposure = useMutation({
     mutationFn: ({ eventId, nearbyBufferM }: { eventId: string; nearbyBufferM?: number }) =>
       api.computeEventExposure(monitorId as string, eventId, nearbyBufferM),
@@ -312,7 +325,7 @@ export function useEventMutations(monitorId: string | null) {
     },
   });
 
-  return { patchStatus, computeImpact, computeExposure };
+  return { patchStatus, computeSemantics, computeImpact, computeExposure };
 }
 
 export function useRunMutations(monitorId: string | null) {

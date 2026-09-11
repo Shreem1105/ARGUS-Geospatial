@@ -13,6 +13,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.change_analysis import ChangeAnalysis
+    from app.models.change_event_semantic_analysis import ChangeEventSemanticAnalysis
     from app.models.monitor import Monitor
     from app.models.satellite_observation import SatelliteObservation
 
@@ -92,5 +93,15 @@ class PreparedObservation(Base):
     after_change_analyses: Mapped[list[ChangeAnalysis]] = relationship(
         back_populates="after_prepared_observation",
         foreign_keys="ChangeAnalysis.after_prepared_id",
+        passive_deletes=True,
+    )
+    before_semantic_analyses: Mapped[list[ChangeEventSemanticAnalysis]] = relationship(
+        back_populates="before_prepared_observation",
+        foreign_keys="ChangeEventSemanticAnalysis.before_prepared_observation_id",
+        passive_deletes=True,
+    )
+    after_semantic_analyses: Mapped[list[ChangeEventSemanticAnalysis]] = relationship(
+        back_populates="after_prepared_observation",
+        foreign_keys="ChangeEventSemanticAnalysis.after_prepared_observation_id",
         passive_deletes=True,
     )

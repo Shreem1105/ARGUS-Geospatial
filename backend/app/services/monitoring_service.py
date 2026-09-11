@@ -111,6 +111,13 @@ from app.services.prepared_observation_service import (
     PreparedObservationQueryError,
     prepare_observation,
 )
+from app.services.semantic_service import (
+    SemanticConflictError,
+    SemanticPersistenceError,
+    SemanticProcessingError,
+    SemanticQueryError,
+    compute_analysis_semantics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -284,12 +291,38 @@ def _compute_context_products_for_run(
     parameters: dict[str, Any],
     event_count: int,
     warnings: list[str],
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+    semantic_payload: dict[str, Any] | None = None
     impact_payload: dict[str, Any] | None = None
     exposure_payload: dict[str, Any] | None = None
 
     if event_count <= 0:
-        return impact_payload, exposure_payload
+        return semantic_payload, impact_payload, exposure_payload
+
+    _update_progress(db_session, job=job, run=run, stage="computing_semantics", progress_percent=80.0)
+    _ensure_not_cancelled(db_session, job_id=job.id)
+    try:
+        semantic_result = compute_analysis_semantics(
+            db_session,
+            monitor_id=job.monitor_id,
+            analysis_id=analysis_id,
+            force_recompute=False,
+        )
+        if semantic_result is not None:
+            semantic_payload = semantic_result.response.model_dump(mode="json")
+            run.semantics_computed = bool(
+                semantic_result.response.computed > 0
+                or semantic_result.response.reused > 0
+                or semantic_result.response.failed == 0
+            )
+            if semantic_result.response.failed > 0:
+                warnings.append("semantic_partial_failure")
+            db_session.add(run)
+            db_session.commit()
+    except SemanticConflictError as exc:
+        warnings.append(f"semantic_compute_failed:{exc.__class__.__name__}")
+    except (SemanticPersistenceError, SemanticQueryError, SemanticProcessingError) as exc:
+        warnings.append(f"semantic_compute_failed:{exc.__class__.__name__}")
 
     _update_progress(db_session, job=job, run=run, stage="computing_impacts", progress_percent=84.0)
     _ensure_not_cancelled(db_session, job_id=job.id)
@@ -376,7 +409,7 @@ def _compute_context_products_for_run(
     except (ExposurePersistenceError, ExposureQueryError) as exc:
         warnings.append(f"exposure_compute_failed:{exc.__class__.__name__}")
 
-    return impact_payload, exposure_payload
+    return semantic_payload, impact_payload, exposure_payload
 
 
 def _job_to_read(job: AnalysisJob) -> AnalysisJobRead:
@@ -415,6 +448,7 @@ def _run_to_read(run: MonitorRun) -> MonitorRunRead:
         after_prepared_id=run.after_prepared_id,
         analysis_id=run.analysis_id,
         events_generated=run.events_generated,
+        semantics_computed=run.semantics_computed,
         impacts_computed=run.impacts_computed,
         exposures_computed=run.exposures_computed,
         progress_log=list(run.progress_log or []),
@@ -1482,7 +1516,7 @@ def execute_monitor_run_workflow(
         db_session.add(run)
         db_session.commit()
 
-        impact_payload, exposure_payload = _compute_context_products_for_run(
+        semantic_payload, impact_payload, exposure_payload = _compute_context_products_for_run(
             db_session,
             job=job,
             run=run,
@@ -1508,6 +1542,7 @@ def execute_monitor_run_workflow(
             "analysis_reused": analysis_result.reused,
             "events_generated": event_result.response.count,
             "events_reused": (not event_result.generated),
+            "semantic": semantic_payload,
             "impact": impact_payload,
             "exposure": exposure_payload,
             "warnings": warnings,

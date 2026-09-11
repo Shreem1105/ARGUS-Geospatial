@@ -1,13 +1,16 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/api/client";
 import type {
+  AnalysisSemanticComputeResponse,
   AnalysisJob,
   ChangeAnalysis,
   ChangeEvent,
+  ChangeEventSemanticAnalysis,
   ContextFeature,
   ContextSummary,
   EventExposureSummary,
   EventImpactSummary,
   EventIntelligence,
+  EventSemanticComputeResponse,
   Monitor,
   MonitorDatasetEntry,
   MonitorEventSummary,
@@ -72,6 +75,7 @@ export const api = {
       offset?: number;
       severity?: string;
       status?: string;
+      semanticLabel?: string;
       minConfidence?: number;
       minAreaM2?: number;
       analysisId?: string;
@@ -84,6 +88,7 @@ export const api = {
           offset: params?.offset,
           severity: params?.severity,
           status: params?.status,
+          semantic_label: params?.semanticLabel,
           min_confidence: params?.minConfidence,
           min_area_m2: params?.minAreaM2,
           analysis_id: params?.analysisId,
@@ -91,6 +96,12 @@ export const api = {
       }`,
     ),
   getEvent: (monitorId: string, eventId: string) => apiGet<ChangeEvent>(`/monitors/${monitorId}/events/${eventId}`),
+  getEventSemantics: (monitorId: string, eventId: string) =>
+    apiGet<ChangeEventSemanticAnalysis>(`/monitors/${monitorId}/events/${eventId}/semantics`),
+  computeEventSemantics: (monitorId: string, eventId: string, forceRecompute = false) =>
+    apiPost<EventSemanticComputeResponse>(
+      `/monitors/${monitorId}/events/${eventId}/semantics${toQuery({ force_recompute: forceRecompute ? true : undefined })}`,
+    ),
   patchEventStatus: (monitorId: string, eventId: string, status: string) =>
     apiPatch<ChangeEvent>(`/monitors/${monitorId}/events/${eventId}`, { status }),
   getEventImpact: (monitorId: string, eventId: string) =>
@@ -176,6 +187,10 @@ export const api = {
   generateEvents: (monitorId: string, analysisId: string) =>
     apiPost<{ analysis_id: string; count: number; generated: boolean; events: ChangeEvent[] }>(
       `/monitors/${monitorId}/analyses/${analysisId}/events`,
+    ),
+  computeAnalysisSemantics: (monitorId: string, analysisId: string, forceRecompute = false) =>
+    apiPost<AnalysisSemanticComputeResponse>(
+      `/monitors/${monitorId}/analyses/${analysisId}/semantics${toQuery({ force_recompute: forceRecompute ? true : undefined })}`,
     ),
 
   listContext: (

@@ -21,6 +21,7 @@ from app.schemas import (
     AnalysisJobType,
     AnalysisExposureComputeResponse,
     AnalysisImpactComputeResponse,
+    AnalysisSemanticComputeResponse,
     MonitorRunEnqueueRequest,
     MonitorRunEnqueueResponse,
     MonitorRunRead,
@@ -39,6 +40,7 @@ from app.schemas import (
     EventIntelligenceRead,
     EventImpactComputeResponse,
     EventImpactSummaryRead,
+    EventSemanticComputeResponse,
     LandCoverRefreshResponse,
     MonitorDatasetsRead,
     MonitorExposureSummaryRead,
@@ -50,6 +52,7 @@ from app.schemas import (
     ChangeEventGenerationResponse,
     ChangeEventIntersectsRequest,
     ChangeEventRead,
+    ChangeEventSemanticAnalysisRead,
     ChangeEventSpatialSummary,
     ChangeEventStatus,
     ChangeEventStatusUpdate,
@@ -66,6 +69,7 @@ from app.schemas import (
     PreparedObservationRead,
     PrepareObservationRequest,
     SatelliteObservationRead,
+    SemanticLabel,
 )
 from app.services.context_service import (
     ContextPersistenceError,
@@ -191,6 +195,15 @@ from app.services.prepared_observation_service import (
     get_prepared_observation,
     prepare_observation,
 )
+from app.services.semantic_service import (
+    SemanticConflictError,
+    SemanticPersistenceError,
+    SemanticProcessingError,
+    SemanticQueryError,
+    compute_analysis_semantics,
+    compute_change_event_semantics,
+    get_change_event_semantic_analysis,
+)
 
 router = APIRouter(prefix="/monitors", tags=["monitors"])
 
@@ -211,6 +224,7 @@ def _normalize_monitor_type_filter(monitor_type: str | None) -> str | None:
 
 EVENT_SEVERITY_VALUES = {"low", "medium", "high", "critical"}
 EVENT_STATUS_VALUES = {"new", "reviewed", "dismissed", "confirmed"}
+SEMANTIC_LABEL_VALUES = {label.value for label in SemanticLabel}
 
 
 def _normalize_event_severity_filter(severity: str | None) -> str | None:
@@ -262,6 +276,27 @@ def _normalize_platform_filter(platform: str | None) -> str | None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="platform must not be blank",
+        )
+
+    return normalized
+
+
+def _normalize_semantic_label_filter(semantic_label: str | None) -> str | None:
+    if semantic_label is None:
+        return None
+
+    normalized = semantic_label.strip().lower()
+    if not normalized:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="semantic_label must not be blank",
+        )
+
+    if normalized not in SEMANTIC_LABEL_VALUES:
+        values = ", ".join(sorted(SEMANTIC_LABEL_VALUES))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"semantic_label must be one of: {values}",
         )
 
     return normalized
@@ -1483,6 +1518,38 @@ def list_analysis_events_route(
 
 
 @router.post(
+    "/{monitor_id}/analyses/{analysis_id}/semantics",
+    response_model=AnalysisSemanticComputeResponse,
+    status_code=status.HTTP_200_OK,
+)
+def compute_analysis_semantics_route(
+    monitor_id: UUID,
+    analysis_id: UUID,
+    force_recompute: bool = Query(default=False),
+    db_session: Session = Depends(get_db_session),
+) -> AnalysisSemanticComputeResponse:
+    try:
+        result = compute_analysis_semantics(
+            db_session,
+            monitor_id=monitor_id,
+            analysis_id=analysis_id,
+            force_recompute=force_recompute,
+        )
+    except SemanticConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (SemanticPersistenceError, SemanticQueryError, SemanticProcessingError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to compute analysis semantics",
+        ) from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change analysis not found")
+
+    return result.response
+
+
+@router.post(
     "/{monitor_id}/analyses/{analysis_id}/impact",
     response_model=AnalysisImpactComputeResponse,
     status_code=status.HTTP_200_OK,
@@ -1657,6 +1724,70 @@ def get_event_impact_route(
 
 
 @router.get(
+    "/{monitor_id}/events/{event_id}/semantics",
+    response_model=ChangeEventSemanticAnalysisRead,
+    status_code=status.HTTP_200_OK,
+)
+def get_event_semantics_route(
+    monitor_id: UUID,
+    event_id: UUID,
+    db_session: Session = Depends(get_db_session),
+) -> ChangeEventSemanticAnalysisRead:
+    try:
+        summary = get_change_event_semantic_analysis(
+            db_session,
+            monitor_id=monitor_id,
+            event_id=event_id,
+        )
+    except SemanticQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch change-event semantics",
+        ) from exc
+
+    if summary is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change-event semantic analysis not found")
+
+    return summary
+
+
+@router.post(
+    "/{monitor_id}/events/{event_id}/semantics",
+    response_model=EventSemanticComputeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def compute_event_semantics_route(
+    monitor_id: UUID,
+    event_id: UUID,
+    response: Response,
+    force_recompute: bool = Query(default=False),
+    db_session: Session = Depends(get_db_session),
+) -> EventSemanticComputeResponse:
+    try:
+        result = compute_change_event_semantics(
+            db_session,
+            monitor_id=monitor_id,
+            event_id=event_id,
+            force_recompute=force_recompute,
+        )
+    except SemanticConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (SemanticPersistenceError, SemanticQueryError, SemanticProcessingError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to compute change-event semantics",
+        ) from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change event not found")
+
+    if not result.computed:
+        response.status_code = status.HTTP_200_OK
+
+    return EventSemanticComputeResponse(computed=result.computed, summary=result.summary)
+
+
+@router.get(
     "/{monitor_id}/events",
     response_model=list[ChangeEventRead],
     status_code=status.HTTP_200_OK,
@@ -1667,6 +1798,7 @@ def list_events_route(
     offset: int = Query(default=0, ge=0),
     severity: str | None = Query(default=None),
     event_status: str | None = Query(default=None, alias="status"),
+    semantic_label: str | None = Query(default=None),
     min_confidence: float | None = Query(default=None, ge=0, le=1),
     min_area_m2: float | None = Query(default=None, ge=0),
     analysis_id: UUID | None = Query(default=None),
@@ -1674,6 +1806,7 @@ def list_events_route(
 ) -> list[ChangeEventRead]:
     normalized_severity = _normalize_event_severity_filter(severity)
     normalized_status = _normalize_event_status_filter(event_status)
+    normalized_semantic_label = _normalize_semantic_label_filter(semantic_label)
 
     try:
         events = list_change_events(
@@ -1686,6 +1819,7 @@ def list_events_route(
             min_confidence=min_confidence,
             min_area_m2=min_area_m2,
             analysis_id=analysis_id,
+            semantic_label=normalized_semantic_label,
         )
     except ChangeEventQueryError as exc:
         raise HTTPException(

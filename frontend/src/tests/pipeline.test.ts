@@ -20,6 +20,7 @@ function sampleRun(overrides: Partial<MonitorRun> = {}): MonitorRun {
     after_prepared_id: null,
     analysis_id: null,
     events_generated: 0,
+    semantics_computed: false,
     impacts_computed: false,
     exposures_computed: false,
     progress_log: [{ stage: "searching_observations" }, { stage: "preparing_observations" }],
@@ -57,6 +58,7 @@ describe("pipeline mapping", () => {
   it("maps known backend stage names", () => {
     expect(mapStageToPipelineStep("searching_observations")).toBe("satellite");
     expect(mapStageToPipelineStep("preparing_observations")).toBe("prepare");
+    expect(mapStageToPipelineStep("computing_semantics")).toBe("semantic");
     expect(mapStageToPipelineStep("computing_exposures")).toBe("exposure");
   });
 

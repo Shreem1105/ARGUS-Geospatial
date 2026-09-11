@@ -1,6 +1,6 @@
 import type { AnalysisJob, MonitorRun } from "@/types/api";
 
-export type PipelineStepKey = "satellite" | "prepare" | "detect" | "vectorize" | "context" | "exposure";
+export type PipelineStepKey = "satellite" | "prepare" | "detect" | "vectorize" | "semantic" | "context" | "exposure";
 export type PipelineStepState = "pending" | "active" | "done" | "skipped" | "failed";
 
 export type PipelineStep = {
@@ -10,13 +10,14 @@ export type PipelineStep = {
   detail: string;
 };
 
-const PIPELINE_ORDER: PipelineStepKey[] = ["satellite", "prepare", "detect", "vectorize", "context", "exposure"];
+const PIPELINE_ORDER: PipelineStepKey[] = ["satellite", "prepare", "detect", "vectorize", "semantic", "context", "exposure"];
 
 const STEP_LABEL: Record<PipelineStepKey, string> = {
   satellite: "Satellite",
   prepare: "Prepare",
   detect: "Detect",
   vectorize: "Vectorize",
+  semantic: "Semantic",
   context: "Context",
   exposure: "Exposure",
 };
@@ -29,6 +30,7 @@ const STAGE_TO_STEP: Record<string, PipelineStepKey> = {
   preparing_observations: "prepare",
   running_analysis: "detect",
   generating_events: "vectorize",
+  computing_semantics: "semantic",
   refreshing_context: "context",
   computing_impacts: "context",
   computing_exposures: "exposure",

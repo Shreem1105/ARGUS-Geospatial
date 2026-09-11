@@ -95,6 +95,7 @@ class MonitorRun(Base):
         nullable=True,
     )
     events_generated: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    semantics_computed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     impacts_computed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     exposures_computed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     progress_log: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)

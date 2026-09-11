@@ -50,6 +50,10 @@ export function EventList({ events, selectedEventId, onSelectEvent }: EventListP
                 <span>Status: {event.status}</span>
                 <span>Area: {formatArea(event.area_m2)}</span>
                 <span>Detected: {formatDate(event.first_detected_at)}</span>
+                <span>Semantic: {event.semantic_label ?? "—"}</span>
+                <span>
+                  Semantic confidence: {event.semantic_confidence === null ? "—" : formatPercent(event.semantic_confidence * 100, 1)}
+                </span>
               </div>
             </button>
           </li>

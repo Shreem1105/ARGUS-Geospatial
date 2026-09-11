@@ -33,7 +33,7 @@ export function PipelineVisualizer({ run, job }: PipelineVisualizerProps) {
     <Panel>
       <PanelHeader
         title="Run Pipeline"
-        subtitle="Satellite → Prepare → Detect → Vectorize → Context → Exposure"
+        subtitle="Satellite → Prepare → Detect → Vectorize → Semantic → Context → Exposure"
         actions={
           run ? (
             <span className="text-[11px] text-argus-muted">Elapsed: {formatElapsed(run.started_at, run.completed_at)}</span>

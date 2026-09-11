@@ -28,11 +28,54 @@ type ArgusMapProps = {
   fitOnSelection?: boolean;
   showMonitor?: boolean;
   showEvents?: boolean;
+  eventColorMode?: "severity" | "semantic";
   focusNonce?: number;
 };
 
 const MONITOR_SOURCE_ID = "argus-monitor-source";
 const EVENTS_SOURCE_ID = "argus-events-source";
+
+const SEVERITY_FILL_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
+  "match",
+  ["get", "severity"],
+  "critical",
+  "#ff7f7f",
+  "high",
+  "#ff9a63",
+  "medium",
+  "#edbf65",
+  "#59c794",
+];
+
+const SEMANTIC_FILL_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
+  "match",
+  ["coalesce", ["get", "semantic_label"], "uncertain"],
+  "vegetation_decrease",
+  "#de5f72",
+  "vegetation_increase",
+  "#4ccf7f",
+  "built_area_increase",
+  "#8fa5ff",
+  "built_area_decrease",
+  "#6b7bb7",
+  "water_expansion",
+  "#42d4ff",
+  "water_contraction",
+  "#207ea8",
+  "bare_ground_increase",
+  "#c7925c",
+  "bare_ground_decrease",
+  "#7f9f5b",
+  "mixed_change",
+  "#d996ff",
+  "uncertain",
+  "#9fabc0",
+  "#9fabc0",
+];
+
+function eventFillColorExpression(mode: "severity" | "semantic"): maplibregl.ExpressionSpecification {
+  return mode === "semantic" ? SEMANTIC_FILL_COLOR_EXPRESSION : SEVERITY_FILL_COLOR_EXPRESSION;
+}
 
 function buildMonitorGeoJson(monitor?: Monitor | null): GeoJsonFeatureCollection {
   if (!monitor) {
@@ -62,12 +105,14 @@ function buildEventsGeoJson(events: ChangeEvent[] = []): GeoJsonFeatureCollectio
       type: "Feature",
       id: event.id,
       geometry: event.geometry as unknown as Geometry,
-      properties: {
-        id: event.id,
-        severity: event.severity,
-        confidence: event.confidence,
-        status: event.status,
-        area_m2: event.area_m2,
+        properties: {
+          id: event.id,
+          severity: event.severity,
+          semantic_label: event.semantic_label,
+          semantic_confidence: event.semantic_confidence,
+          confidence: event.confidence,
+          status: event.status,
+          area_m2: event.area_m2,
       },
     })),
   };
@@ -93,6 +138,7 @@ export function ArgusMap({
   fitOnSelection = true,
   showMonitor = true,
   showEvents = true,
+  eventColorMode = "severity",
   focusNonce,
 }: ArgusMapProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -182,17 +228,7 @@ export function ArgusMap({
         type: "fill",
         source: EVENTS_SOURCE_ID,
         paint: {
-          "fill-color": [
-            "match",
-            ["get", "severity"],
-            "critical",
-            "#ff7f7f",
-            "high",
-            "#ff9a63",
-            "medium",
-            "#edbf65",
-            "#59c794",
-          ],
+          "fill-color": eventFillColorExpression(eventColorMode),
           "fill-opacity": selectedEventId ? 0.15 : 0.3,
         },
       });
@@ -263,6 +299,8 @@ export function ArgusMap({
 
           const eventId = typeof props.id === "string" ? props.id : "unknown";
           const severity = typeof props.severity === "string" ? props.severity : "—";
+          const semanticLabel = typeof props.semantic_label === "string" ? props.semantic_label : "—";
+          const semanticConfidence = Number(props.semantic_confidence);
           const confidence = Number(props.confidence);
           const areaM2 = Number(props.area_m2);
 
@@ -270,6 +308,8 @@ export function ArgusMap({
             <div style="font-size:12px;line-height:1.4">
               <div style="font-weight:600">Event ${eventId.slice(0, 8)}</div>
               <div>Severity: ${severity}</div>
+              <div>Semantic: ${semanticLabel}</div>
+              <div>Semantic confidence: ${Number.isFinite(semanticConfidence) ? formatPercent(semanticConfidence * 100, 1) : "—"}</div>
               <div>Confidence: ${Number.isFinite(confidence) ? formatPercent(confidence * 100, 1) : "—"}</div>
               <div>Area: ${Number.isFinite(areaM2) ? formatArea(areaM2) : "—"}</div>
             </div>
@@ -300,7 +340,20 @@ export function ArgusMap({
       map.remove();
       mapRef.current = null;
     };
-  }, [ambientMotion, eventsCollection, fitOnSelection, initialCenter, initialZoom, interactive, monitorCollection, onSelectEvent, selectedEventId, showEvents, showMonitor]);
+  }, [
+    ambientMotion,
+    eventColorMode,
+    eventsCollection,
+    fitOnSelection,
+    initialCenter,
+    initialZoom,
+    interactive,
+    monitorCollection,
+    onSelectEvent,
+    selectedEventId,
+    showEvents,
+    showMonitor,
+  ]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -322,6 +375,7 @@ export function ArgusMap({
     }
 
     if (map.getLayer("events-fill")) {
+      map.setPaintProperty("events-fill", "fill-color", eventFillColorExpression(eventColorMode));
       map.setPaintProperty("events-fill", "fill-opacity", selectedEventId ? 0.15 : 0.3);
     }
     if (map.getLayer("events-outline")) {
@@ -340,7 +394,7 @@ export function ArgusMap({
     setVisibility("events-selected-fill", showEvents);
     setVisibility("events-outline", showEvents);
     setVisibility("events-selected", showEvents);
-  }, [eventsCollection, monitorCollection, selectedEventId, showEvents, showMonitor]);
+  }, [eventColorMode, eventsCollection, monitorCollection, selectedEventId, showEvents, showMonitor]);
 
   useEffect(() => {
     if (!fitOnSelection) {

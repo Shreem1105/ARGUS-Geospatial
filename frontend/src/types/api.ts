@@ -3,6 +3,17 @@ import type { GeoJsonGeometry, GeoJsonPoint, GeoJsonPolygon } from "@/types/geoj
 export type MonitorStatus = "active" | "paused" | "archived";
 export type ChangeEventSeverity = "low" | "medium" | "high" | "critical";
 export type ChangeEventStatus = "new" | "reviewed" | "dismissed" | "confirmed";
+export type SemanticLabel =
+  | "vegetation_decrease"
+  | "vegetation_increase"
+  | "built_area_increase"
+  | "built_area_decrease"
+  | "water_expansion"
+  | "water_contraction"
+  | "bare_ground_increase"
+  | "bare_ground_decrease"
+  | "mixed_change"
+  | "uncertain";
 export type AnalysisStatus = "processing" | "ready" | "failed";
 export type PreparedStatus = "processing" | "ready" | "failed";
 export type MonitorRunStatus = "started" | "succeeded" | "no_new_imagery" | "partial" | "failed" | "cancelled";
@@ -137,9 +148,60 @@ export interface ChangeEvent {
   first_detected_at: string;
   last_detected_at: string;
   status: ChangeEventStatus;
+  semantic_label: SemanticLabel | null;
+  semantic_confidence: number | null;
+  semantic_abstained: boolean | null;
   properties: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export interface ChangeEventSemanticAnalysis {
+  id: string;
+  change_event_id: string;
+  change_analysis_id: string;
+  before_prepared_observation_id: string;
+  after_prepared_observation_id: string;
+  semantic_label: SemanticLabel;
+  semantic_confidence: number;
+  abstained: boolean;
+  model_name: string;
+  model_version: string;
+  inference_method: string;
+  before_land_cover: string | null;
+  after_land_cover: string | null;
+  before_ndvi_mean: number | null;
+  after_ndvi_mean: number | null;
+  ndvi_delta: number | null;
+  before_ndwi_mean: number | null;
+  after_ndwi_mean: number | null;
+  ndwi_delta: number | null;
+  before_nbr_mean: number | null;
+  after_nbr_mean: number | null;
+  nbr_delta: number | null;
+  before_built_up_score: number | null;
+  after_built_up_score: number | null;
+  built_up_delta: number | null;
+  embedding_distance: number | null;
+  valid_pixel_coverage: number | null;
+  explanation: string[];
+  evidence: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EventSemanticComputeResponse {
+  computed: boolean;
+  summary: ChangeEventSemanticAnalysis;
+}
+
+export interface AnalysisSemanticComputeResponse {
+  analysis_id: string;
+  event_count: number;
+  computed: number;
+  reused: number;
+  failed: number;
+  elapsed_seconds: number;
 }
 
 export interface ContextFeature {
@@ -292,6 +354,7 @@ export interface EventIntelligence {
   land_cover: EventExposureSummary["land_cover"];
   environment: EventExposureSummary["environment"];
   significance_factors: EventExposureSummary["significance_factors"];
+  semantic: ChangeEventSemanticAnalysis | null;
 }
 
 export interface MonitorEventSummary {
@@ -376,6 +439,7 @@ export interface MonitorRun {
   after_prepared_id: string | null;
   analysis_id: string | null;
   events_generated: number;
+  semantics_computed: boolean;
   impacts_computed: boolean;
   exposures_computed: boolean;
   progress_log: Array<Record<string, unknown>>;

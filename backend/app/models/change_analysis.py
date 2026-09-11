@@ -13,6 +13,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.change_event import ChangeEvent
+    from app.models.change_event_semantic_analysis import ChangeEventSemanticAnalysis
     from app.models.monitor import Monitor
     from app.models.prepared_observation import PreparedObservation
 
@@ -128,5 +129,9 @@ class ChangeAnalysis(Base):
     )
     change_events: Mapped[list[ChangeEvent]] = relationship(
         back_populates="analysis",
+        passive_deletes=True,
+    )
+    semantic_analyses: Mapped[list[ChangeEventSemanticAnalysis]] = relationship(
+        back_populates="change_analysis",
         passive_deletes=True,
     )

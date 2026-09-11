@@ -23,6 +23,7 @@ Legacy aliases still exist as redirects:
 - **Explore**: public-style map workspace using persisted backend data; no fake curated science values.
 - **Monitors list/create**: real monitor creation flow with AOI draw/edit/reset and backend validation.
 - **Monitor detail workspace**: AOI + change-event map, event intelligence panel, run history, active job progress, schedule editor, observations, and before/after imagery artifacts.
+- **Semantic interpretation overlays**: semantic map mode, semantic event filtering, and semantic evidence readouts in Event Intelligence.
 - **Global Events / Runs**: cross-monitor operational feeds.
 
 ## Visual system and motion
@@ -44,7 +45,13 @@ Legacy aliases still exist as redirects:
 - Frontend API calls go through `/api/backend/*` rewrite to `NEXT_PUBLIC_ARGUS_API_BASE_URL`.
 - Manual run action uses `POST /monitors/{monitor_id}/runs` and polls `GET /jobs/{job_id}` for real stage progress.
 - Pipeline stages shown in UI are mapped from backend `progress_stage` values:
-  - Satellite → Prepare → Detect → Vectorize → Context → Exposure.
+  - Satellite → Prepare → Detect → Vectorize → Semantic → Context → Exposure.
+
+## Semantic safety notes
+
+- Semantic labels represent observable land-surface transition patterns only.
+- They do not establish causal claims such as damage, disaster type, or intent.
+- Semantic confidence shown in the UI is evidence confidence, not a calibrated probability.
 
 ## Local development
 

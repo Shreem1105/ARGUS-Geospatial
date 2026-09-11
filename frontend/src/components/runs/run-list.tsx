@@ -63,6 +63,7 @@ export function RunList({ runs, selectedRunId, onSelectRun, onCancelJob, cancell
                     <span>Obs inserted: {formatNumber(run.observations_inserted, 0)}</span>
                     <span>Events generated: {formatNumber(run.events_generated, 0)}</span>
                     <span>Analysis: {run.analysis_id ? run.analysis_id.slice(0, 8) : "—"}</span>
+                    <span>Semantic computed: {run.semantics_computed ? "yes" : "no"}</span>
                     <span>Impact computed: {run.impacts_computed ? "yes" : "no"}</span>
                     <span>Exposure computed: {run.exposures_computed ? "yes" : "no"}</span>
                     <span>Started (local): {formatDate(run.started_at)}</span>

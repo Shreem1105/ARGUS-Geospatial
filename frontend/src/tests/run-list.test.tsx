@@ -21,6 +21,7 @@ function sampleRun(overrides: Partial<MonitorRun> = {}): MonitorRun {
     after_prepared_id: null,
     analysis_id: "analysis-1",
     events_generated: 4,
+    semantics_computed: true,
     impacts_computed: true,
     exposures_computed: false,
     progress_log: [],
@@ -43,6 +44,7 @@ describe("RunList", () => {
   it("shows informational label for no_new_imagery", () => {
     render(<RunList runs={[sampleRun({ status: "no_new_imagery" })]} />);
     expect(screen.getByText(/No New Imagery \(skipped\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Semantic computed: yes/i)).toBeInTheDocument();
   });
 
   it("calls cancel callback for active started run", () => {

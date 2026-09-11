@@ -100,6 +100,7 @@ class MonitorRunRead(BaseModel):
     after_prepared_id: UUID | None
     analysis_id: UUID | None
     events_generated: int = Field(ge=0)
+    semantics_computed: bool
     impacts_computed: bool
     exposures_computed: bool
     progress_log: list[dict[str, Any]]

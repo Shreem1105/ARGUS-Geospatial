@@ -56,6 +56,9 @@ class ChangeEventRead(BaseModel):
     first_detected_at: datetime
     last_detected_at: datetime
     status: ChangeEventStatus
+    semantic_label: str | None = None
+    semantic_confidence: float | None = Field(default=None, ge=0, le=1)
+    semantic_abstained: bool | None = None
     properties: dict[str, Any]
     created_at: datetime
     updated_at: datetime

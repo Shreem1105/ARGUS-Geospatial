@@ -536,7 +536,7 @@ def test_context_products_success_has_no_conflict_warnings(
         job = db_session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id)).scalar_one()
         run = db_session.execute(select(MonitorRun).where(MonitorRun.id == run_id)).scalar_one()
 
-        impact_payload, exposure_payload = monitoring_service._compute_context_products_for_run(
+        semantic_payload, impact_payload, exposure_payload = monitoring_service._compute_context_products_for_run(
             db_session,
             job=job,
             run=run,
@@ -548,6 +548,7 @@ def test_context_products_success_has_no_conflict_warnings(
         db_session.refresh(run)
 
     assert warnings == []
+    assert semantic_payload is None
     assert run.impacts_computed is True
     assert run.exposures_computed is True
     assert impact_payload is not None
@@ -604,7 +605,7 @@ def test_context_products_reuse_existing_impact_on_conflict_is_non_fatal(
         job = db_session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id)).scalar_one()
         run = db_session.execute(select(MonitorRun).where(MonitorRun.id == run_id)).scalar_one()
 
-        impact_payload, _ = monitoring_service._compute_context_products_for_run(
+        semantic_payload, impact_payload, _ = monitoring_service._compute_context_products_for_run(
             db_session,
             job=job,
             run=run,
@@ -615,6 +616,7 @@ def test_context_products_reuse_existing_impact_on_conflict_is_non_fatal(
         )
         db_session.refresh(run)
 
+    assert semantic_payload is None
     assert run.impacts_computed is True
     assert impact_payload is not None
     assert all("ImpactConflictError" not in warning for warning in warnings)
@@ -670,7 +672,7 @@ def test_context_products_reuse_existing_exposure_on_conflict_is_non_fatal(
         job = db_session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id)).scalar_one()
         run = db_session.execute(select(MonitorRun).where(MonitorRun.id == run_id)).scalar_one()
 
-        _, exposure_payload = monitoring_service._compute_context_products_for_run(
+        _, _, exposure_payload = monitoring_service._compute_context_products_for_run(
             db_session,
             job=job,
             run=run,

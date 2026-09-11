@@ -73,6 +73,7 @@ export default function MonitorDetailPage() {
     offset: 0,
     severity: values.severity,
     status: values.eventStatus,
+    semanticLabel: values.semanticLabel,
   });
   const runsQuery = useMonitorRunsQuery(monitorId, {
     limit: 100,
@@ -282,6 +283,7 @@ export default function MonitorDetailPage() {
               aria-label="Select monitor layer mode"
             >
               <option value="event_polygons">Event polygons</option>
+              <option value="semantic_change">Semantic change</option>
               <option value="before_imagery">Before imagery</option>
               <option value="after_imagery">After imagery</option>
               <option value="change_preview">Change preview</option>
@@ -518,7 +520,8 @@ export default function MonitorDetailPage() {
               setMapFocusNonce((current) => current + 1);
             }}
             className="h-full min-h-[76vh]"
-            showEvents={layerMode === "event_polygons"}
+            showEvents={layerMode === "event_polygons" || layerMode === "semantic_change"}
+            eventColorMode={layerMode === "semantic_change" ? "semantic" : "severity"}
             focusNonce={mapFocusNonce}
           />
         </ResizePanel>
@@ -557,6 +560,23 @@ export default function MonitorDetailPage() {
                           <option value="dismissed">dismissed</option>
                           <option value="confirmed">confirmed</option>
                         </select>
+                        <select
+                          value={values.semanticLabel ?? ""}
+                          onChange={(event) => setValues({ semanticLabel: event.target.value || null })}
+                          className="argus-field"
+                        >
+                          <option value="">semantic</option>
+                          <option value="vegetation_decrease">vegetation_decrease</option>
+                          <option value="vegetation_increase">vegetation_increase</option>
+                          <option value="built_area_increase">built_area_increase</option>
+                          <option value="built_area_decrease">built_area_decrease</option>
+                          <option value="water_expansion">water_expansion</option>
+                          <option value="water_contraction">water_contraction</option>
+                          <option value="bare_ground_increase">bare_ground_increase</option>
+                          <option value="bare_ground_decrease">bare_ground_decrease</option>
+                          <option value="mixed_change">mixed_change</option>
+                          <option value="uncertain">uncertain</option>
+                        </select>
                       </div>
                     }
                   />
@@ -570,6 +590,27 @@ export default function MonitorDetailPage() {
                   />
                 </Panel>
 
+                {layerMode === "semantic_change" ? (
+                  <Panel className="p-3">
+                    <PanelHeader title="Semantic Legend" subtitle="Observable land-surface transition classes" />
+                    <div className="grid gap-1.5 text-[11px] text-argus-muted sm:grid-cols-2">
+                      <LegendRow color="#de5f72" label="vegetation_decrease" />
+                      <LegendRow color="#4ccf7f" label="vegetation_increase" />
+                      <LegendRow color="#8fa5ff" label="built_area_increase" />
+                      <LegendRow color="#6b7bb7" label="built_area_decrease" />
+                      <LegendRow color="#42d4ff" label="water_expansion" />
+                      <LegendRow color="#207ea8" label="water_contraction" />
+                      <LegendRow color="#c7925c" label="bare_ground_increase" />
+                      <LegendRow color="#7f9f5b" label="bare_ground_decrease" />
+                      <LegendRow color="#d996ff" label="mixed_change" />
+                      <LegendRow color="#9fabc0" label="uncertain" />
+                    </div>
+                    <p className="mt-2 text-[11px] text-argus-muted">
+                      Labels indicate observable spectral transition patterns and do not establish causal event claims.
+                    </p>
+                  </Panel>
+                ) : null}
+
                 <EventIntelligencePanel
                   loading={intelligenceQuery.isLoading}
                   error={intelligenceQuery.error ? (intelligenceQuery.error as Error).message : null}
@@ -580,7 +621,7 @@ export default function MonitorDetailPage() {
                 <Panel className="p-3">
                   <PanelHeader
                     title="Event Actions"
-                    subtitle="Review, compute impact/exposure, and export"
+                    subtitle="Review, compute semantics/impact/exposure, and export"
                     actions={
                       <div className="flex gap-1">
                         <button
@@ -628,6 +669,20 @@ export default function MonitorDetailPage() {
                           className="argus-control"
                         >
                           Mark reviewed
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => eventMutations.computeSemantics.mutate({ eventId: selectedEvent.id })}
+                          className="argus-control"
+                        >
+                          Compute semantics
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => eventMutations.computeSemantics.mutate({ eventId: selectedEvent.id, forceRecompute: true })}
+                          className="argus-control"
+                        >
+                          Recompute semantics
                         </button>
                         <button
                           type="button"
@@ -744,6 +799,15 @@ export default function MonitorDetailPage() {
           onSelectObservation={(observationId) => setValues({ observationId })}
         />
       ) : null}
+    </div>
+  );
+}
+
+function LegendRow({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color }} />
+      <span>{label}</span>
     </div>
   );
 }

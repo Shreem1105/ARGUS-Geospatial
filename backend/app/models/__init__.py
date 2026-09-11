@@ -3,6 +3,7 @@ from app.models.change_analysis import ChangeAnalysis
 from app.models.change_event_environmental_exposure import ChangeEventEnvironmentalExposure
 from app.models.change_event_land_cover_exposure import ChangeEventLandCoverExposure
 from app.models.change_event_population_exposure import ChangeEventPopulationExposure
+from app.models.change_event_semantic_analysis import ChangeEventSemanticAnalysis
 from app.models.change_event import ChangeEvent
 from app.models.change_event_impact import ChangeEventImpact
 from app.models.context_feature import ContextFeature
@@ -21,6 +22,7 @@ __all__ = [
     "ChangeEventEnvironmentalExposure",
     "ChangeEventLandCoverExposure",
     "ChangeEventPopulationExposure",
+    "ChangeEventSemanticAnalysis",
     "ChangeEvent",
     "ChangeEventImpact",
     "ContextFeature",

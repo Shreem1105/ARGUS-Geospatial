@@ -128,6 +128,47 @@ ChangeEvent confidence represents the strength and consistency of detected chang
 
 Severity currently represents relative magnitude of detected geographic change, not danger, damage, or infrastructure impact.
 
+## Semantic Change Intelligence
+
+ARGUS adds a semantic interpretation stage downstream of candidate ChangeEvent generation. This stage classifies observable land-surface transition patterns from event-local before/after evidence.
+
+- **Compute one event semantics**: `POST /monitors/{monitor_id}/events/{event_id}/semantics`
+- **Get one event semantics**: `GET /monitors/{monitor_id}/events/{event_id}/semantics`
+- **Compute one analysis semantics (bulk)**: `POST /monitors/{monitor_id}/analyses/{analysis_id}/semantics`
+- **Filter events by semantic label**: `GET /monitors/{monitor_id}/events?semantic_label=<label>`
+
+Method summary:
+
+- Uses real event geometry to window before/after prepared multispectral rasters plus valid-comparison masks.
+- Computes deterministic spectral evidence (NDVI, NDWI, NBR when available, and built-up index/NDBI when available).
+- Computes optional embedding evidence from a pretrained TorchGeo Sentinel-2 RGB MoCo backbone.
+- Applies a deterministic hybrid rule-based inference to produce semantic label, abstention flag, and evidence-confidence score.
+- Persists semantic provenance/evidence in `change_event_semantic_analyses` without duplicating event+model+version+method rows.
+
+Current semantic labels:
+
+- `vegetation_decrease`
+- `vegetation_increase`
+- `built_area_increase`
+- `built_area_decrease`
+- `water_expansion`
+- `water_contraction`
+- `bare_ground_increase`
+- `bare_ground_decrease`
+- `mixed_change`
+- `uncertain`
+
+Abstention behavior:
+
+- Returns `uncertain` when evidence is weak or valid event coverage is insufficient.
+
+Interpretation limits:
+
+- Semantic labels describe observable surface transitions only.
+- They do not establish cause, intent, legality, hazard, or damage.
+- Semantic evidence confidence measures agreement/strength of observed evidence; it is not a calibrated probability.
+- WorldCover context, when present, is baseline contextual information unless temporally matched per-scene labels exist.
+
 ## Context and Impact Intelligence
 
 ARGUS can enrich ChangeEvents with real external GIS context sourced from OpenStreetMap data.
@@ -222,7 +263,7 @@ Core endpoints:
 - `GET /monitors/{monitor_id}/schedule`
 - `GET /worker/health`
 
-Typical progress stages include `queued`, `initializing`, `searching_observations`, `preparing_observations`, `running_analysis`, `generating_events`, and `completed` (or `no_new_imagery`/`partial`/`failed`/`cancelled`).
+Typical progress stages include `queued`, `initializing`, `searching_observations`, `preparing_observations`, `running_analysis`, `generating_events`, `computing_semantics`, `computing_impacts`, `computing_exposures`, and `completed` (or `no_new_imagery`/`partial`/`failed`/`cancelled`).
 
 Scheduler behavior:
 

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from app.models.change_analysis import ChangeAnalysis
     from app.models.change_event_environmental_exposure import ChangeEventEnvironmentalExposure
     from app.models.change_event_land_cover_exposure import ChangeEventLandCoverExposure
+    from app.models.change_event_semantic_analysis import ChangeEventSemanticAnalysis
     from app.models.change_event_population_exposure import ChangeEventPopulationExposure
     from app.models.change_event_impact import ChangeEventImpact
     from app.models.monitor import Monitor
@@ -127,5 +128,9 @@ class ChangeEvent(Base):
     )
     environmental_exposures: Mapped[list[ChangeEventEnvironmentalExposure]] = relationship(
         back_populates="event",
+        passive_deletes=True,
+    )
+    semantic_analyses: Mapped[list[ChangeEventSemanticAnalysis]] = relationship(
+        back_populates="change_event",
         passive_deletes=True,
     )

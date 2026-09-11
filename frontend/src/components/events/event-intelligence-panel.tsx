@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Database, Leaf, Route, Shield, Users, Waves } from "lucide-react";
+import { AlertTriangle, BrainCircuit, Database, Leaf, Route, Shield, Users, Waves } from "lucide-react";
 
 import { Badge, LoadingState, Panel, PanelHeader } from "@/components/ui";
 import { formatArea, formatDateUtc, formatMeters, formatNumber, formatPercent } from "@/lib/format";
@@ -61,6 +61,47 @@ export function EventIntelligencePanel({ loading, error, intelligence, event }: 
                 value={Math.min(100, Math.max(0, (Math.abs(event?.mean_spectral_distance ?? 0) / 0.6) * 100))}
                 annotation={formatNumber(event?.mean_spectral_distance)}
               />
+            </section>
+
+            <section className="argus-panel-muted space-y-2 px-3 py-2.5">
+              <SectionTitle icon={<BrainCircuit size={13} />} title="Semantic Change" />
+              {intelligence.semantic ? (
+                <>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-argus-muted">
+                    <KeyValue label="Label" value={intelligence.semantic.semantic_label} />
+                    <KeyValue label="Abstained" value={intelligence.semantic.abstained ? "yes" : "no"} />
+                    <KeyValue
+                      label="Evidence confidence"
+                      value={formatPercent(intelligence.semantic.semantic_confidence * 100, 1)}
+                    />
+                    <KeyValue
+                      label="Valid pixel coverage"
+                      value={
+                        intelligence.semantic.valid_pixel_coverage === null
+                          ? "—"
+                          : formatPercent(intelligence.semantic.valid_pixel_coverage * 100, 1)
+                      }
+                    />
+                    <KeyValue label="Model" value={intelligence.semantic.model_name} />
+                    <KeyValue label="Version" value={intelligence.semantic.model_version} />
+                  </div>
+                  {intelligence.semantic.explanation.length ? (
+                    <ul className="space-y-1 rounded-md border border-argus-border/45 bg-argus-panel px-2 py-2 text-[11px] text-argus-muted">
+                      {intelligence.semantic.explanation.slice(0, 3).map((line, index) => (
+                        <li key={`${index}-${line}`}>• {line}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <p className="text-[11px] text-argus-muted">
+                    Semantic labels describe observable land-surface transitions only and do not by themselves establish
+                    cause, damage, or intent.
+                  </p>
+                </>
+              ) : (
+                <p className="text-[11px] text-argus-muted">
+                  Semantic analysis has not been computed for this event yet.
+                </p>
+              )}
             </section>
 
             <section className="argus-panel-muted space-y-2 px-3 py-2.5">

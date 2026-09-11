@@ -17,6 +17,7 @@ from app.schemas.impact import (
 )
 from app.schemas.landcover import LandCoverExposureSummaryRead
 from app.schemas.population import PopulationExposureSummaryRead
+from app.schemas.semantic import ChangeEventSemanticAnalysisRead
 
 
 class ExposureSignificance(StrEnum):
@@ -115,6 +116,6 @@ class EventIntelligenceRead(BaseModel):
     land_cover: LandCoverExposureSummaryRead
     environment: EnvironmentalExposureSummaryRead
     significance_factors: list[ExposureFactorRead]
+    semantic: ChangeEventSemanticAnalysisRead | None = None
 
     model_config = ConfigDict(extra="forbid")
-

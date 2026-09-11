@@ -58,6 +58,7 @@ from app.services.population_service import (
     compute_change_event_population_exposure,
     get_change_event_population_exposure,
 )
+from app.services.semantic_service import SemanticQueryError, get_change_event_semantic_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -796,6 +797,11 @@ def get_event_intelligence(
     if exposure_summary is None:
         raise ExposureConflictError("Change-event exposure is not available. Compute exposure before intelligence.")
 
+    try:
+        semantic_summary = get_change_event_semantic_analysis(db_session, monitor_id=monitor_id, event_id=event_id)
+    except SemanticQueryError as exc:
+        raise ExposureQueryError("Failed to fetch semantic change analysis") from exc
+
     return EventIntelligenceRead(
         event_id=event.id,
         monitor_id=event.monitor_id,
@@ -812,4 +818,5 @@ def get_event_intelligence(
         land_cover=exposure_summary.land_cover,
         environment=exposure_summary.environment,
         significance_factors=exposure_summary.significance_factors,
+        semantic=semantic_summary,
     )

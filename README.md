@@ -16,7 +16,7 @@ ARGUS monitors geographic areas using real satellite imagery, detects temporal c
 
 ARGUS runs an end-to-end geospatial workflow:
 
-AOI → satellite discovery → preprocessing → temporal analysis → GIS event generation → contextual spatial analysis → exposure intelligence → asynchronous monitoring.
+AOI → satellite discovery → preprocessing → temporal analysis → GIS event generation → semantic change interpretation → contextual spatial analysis → exposure intelligence → asynchronous monitoring.
 
 ## Core Capabilities
 
@@ -24,6 +24,7 @@ AOI → satellite discovery → preprocessing → temporal analysis → GIS even
 - AOI-aware raster preparation with cloud/validity masking.
 - Temporal spectral + NDVI change analysis over prepared observations.
 - Raster-to-vector ChangeEvent generation in PostGIS.
+- Semantic ChangeEvent interpretation using event-local spectral evidence plus pretrained remote-sensing embeddings.
 - OSM-based contextual enrichment (roads, buildings, waterways, administrative context).
 - Census-based population exposure estimation (areal-weighted).
 - ESA WorldCover-based land-cover exposure summarization.
@@ -59,9 +60,10 @@ flowchart TD
 3. Selected observations are prepared into aligned multispectral analysis artifacts.
 4. Before/after prepared observations are compared to produce a change score and change mask.
 5. Raster change regions are vectorized into ChangeEvents.
-6. ChangeEvents are enriched against stored contextual geospatial layers.
-7. Exposure summaries are computed and persisted for downstream retrieval APIs.
-8. Manual or scheduled monitor runs orchestrate the above asynchronously via Celery.
+6. ChangeEvents are semantically interpreted into observable land-surface transition labels.
+7. ChangeEvents are enriched against stored contextual geospatial layers.
+8. Exposure summaries are computed and persisted for downstream retrieval APIs.
+9. Manual or scheduled monitor runs orchestrate the above asynchronously via Celery.
 
 ## Technology Stack
 

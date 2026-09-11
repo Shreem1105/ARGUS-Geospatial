@@ -9,6 +9,7 @@ import { formatDateUtc } from "@/lib/format";
 
 export type MonitorLayerMode =
   | "event_polygons"
+  | "semantic_change"
   | "before_imagery"
   | "after_imagery"
   | "change_preview"
@@ -31,6 +32,7 @@ type ComparisonMode = "split" | "side-by-side";
 
 const LAYER_OPTIONS: Array<{ id: MonitorLayerMode; label: string }> = [
   { id: "event_polygons", label: "Event polygons" },
+  { id: "semantic_change", label: "Semantic map" },
   { id: "before_imagery", label: "Before" },
   { id: "after_imagery", label: "After" },
   { id: "change_preview", label: "Change preview" },

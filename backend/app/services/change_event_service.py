@@ -19,7 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.gis.conversion import geojson_geometry_to_wkb, wkb_to_geojson_geometry
-from app.models import ChangeAnalysis, ChangeEvent, Monitor, PreparedObservation, SatelliteObservation
+from app.models import ChangeAnalysis, ChangeEvent, ChangeEventSemanticAnalysis, Monitor, PreparedObservation, SatelliteObservation
 from app.processing import EVENT_GENERATION_VERSION, VectorizationError, build_event_candidates
 from app.schemas import (
     ChangeEventGenerationResponse,
@@ -94,6 +94,24 @@ def _centroid_from_geometry(geometry: dict[str, Any]) -> dict[str, Any]:
 
 def _event_to_read(change_event: ChangeEvent) -> ChangeEventRead:
     geometry = wkb_to_geojson_geometry(change_event.geometry)
+    semantic_label: str | None = None
+    semantic_confidence: float | None = None
+    semantic_abstained: bool | None = None
+
+    if isinstance(change_event.properties, dict):
+        semantic_snapshot = change_event.properties.get("semantic")
+        if isinstance(semantic_snapshot, dict):
+            label = semantic_snapshot.get("semantic_label")
+            confidence = semantic_snapshot.get("semantic_confidence")
+            abstained = semantic_snapshot.get("abstained")
+
+            if isinstance(label, str) and label.strip():
+                semantic_label = label.strip()
+            if isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
+                semantic_confidence = float(confidence)
+            if isinstance(abstained, bool):
+                semantic_abstained = abstained
+
     return ChangeEventRead(
         id=change_event.id,
         monitor_id=change_event.monitor_id,
@@ -112,6 +130,9 @@ def _event_to_read(change_event: ChangeEvent) -> ChangeEventRead:
         first_detected_at=change_event.first_detected_at,
         last_detected_at=change_event.last_detected_at,
         status=ChangeEventStatus(change_event.status),
+        semantic_label=semantic_label,
+        semantic_confidence=semantic_confidence,
+        semantic_abstained=semantic_abstained,
         properties=change_event.properties,
         created_at=change_event.created_at,
         updated_at=change_event.updated_at,
@@ -488,6 +509,7 @@ def list_change_events(
     min_confidence: float | None,
     min_area_m2: float | None,
     analysis_id: UUID | None,
+    semantic_label: str | None,
 ) -> list[ChangeEventRead] | None:
     monitor = _get_monitor(db_session, monitor_id)
     if monitor is None:
@@ -505,6 +527,15 @@ def list_change_events(
             statement = statement.where(ChangeEvent.area_m2 >= min_area_m2)
         if analysis_id is not None:
             statement = statement.where(ChangeEvent.analysis_id == analysis_id)
+        if semantic_label is not None:
+            statement = statement.where(
+                select(ChangeEventSemanticAnalysis.id)
+                .where(
+                    ChangeEventSemanticAnalysis.change_event_id == ChangeEvent.id,
+                    ChangeEventSemanticAnalysis.semantic_label == semantic_label,
+                )
+                .exists()
+            )
 
         statement = statement.order_by(ChangeEvent.first_detected_at.desc(), ChangeEvent.id.desc())
         statement = statement.limit(limit).offset(offset)
