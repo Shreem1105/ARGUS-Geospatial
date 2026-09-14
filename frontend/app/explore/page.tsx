@@ -10,7 +10,8 @@ import { EventList } from "@/components/events/event-list";
 import { ArgusMap } from "@/components/map/argus-map";
 import { CuratedExploreEmptyState } from "@/components/explore/curated-empty-state";
 import { ErrorState, LoadingState, Panel, PanelHeader } from "@/components/ui";
-import { useEventIntelligenceQuery, useGlobalEventsQuery, useMonitorsQuery } from "@/hooks/queries";
+import { useEventIntelligenceQuery, usePublicExploreEventsQuery, usePublicExploreMonitorsQuery } from "@/hooks/queries";
+import { useAuthSession } from "@/hooks/auth";
 import { useUrlState } from "@/hooks/url-state";
 import { curatedScenarios } from "@/lib/curated-scenarios";
 import { formatDate, formatPercent } from "@/lib/format";
@@ -24,13 +25,13 @@ export default function ExplorePage() {
 
   const selectedEventId = values.eventId ?? null;
 
-  const monitorsQuery = useMonitorsQuery({ limit: 120, offset: 0 });
-  const eventsQuery = useGlobalEventsQuery({
+  const authSession = useAuthSession();
+  const monitorsQuery = usePublicExploreMonitorsQuery({ limit: 120, offset: 0 });
+  const eventsQuery = usePublicExploreEventsQuery({
     limit: 260,
     offset: 0,
     severity: values.severity,
     status: values.status,
-    monitor_id: values.monitorId ?? undefined,
   });
 
   const selectedEvent = useMemo(
@@ -41,7 +42,10 @@ export default function ExplorePage() {
   const selectedMonitorId = values.monitorId ?? selectedEvent?.monitor_id ?? null;
   const selectedMonitor = (monitorsQuery.data ?? []).find((monitor) => monitor.id === selectedMonitorId) ?? null;
 
-  const intelligenceQuery = useEventIntelligenceQuery(selectedEvent?.monitor_id ?? null, selectedEvent?.id ?? null);
+  const intelligenceQuery = useEventIntelligenceQuery(
+    authSession.data ? selectedEvent?.monitor_id ?? null : null,
+    authSession.data ? selectedEvent?.id ?? null : null,
+  );
 
   const noCurated = curatedScenarios.length === 0;
 
@@ -220,8 +224,8 @@ export default function ExplorePage() {
                 </Panel>
                 <EventIntelligencePanel
                   loading={intelligenceQuery.isLoading}
-                  error={intelligenceQuery.error ? (intelligenceQuery.error as Error).message : null}
-                  intelligence={intelligenceQuery.data ?? null}
+                  error={!authSession.data && selectedEvent ? "Sign in to view private event intelligence details." : intelligenceQuery.error ? (intelligenceQuery.error as Error).message : null}
+                  intelligence={authSession.data ? intelligenceQuery.data ?? null : null}
                   event={selectedEvent}
                 />
               </div>

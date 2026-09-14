@@ -93,8 +93,14 @@ def monitor_to_read(monitor: Monitor) -> MonitorRead:
     )
 
 
-def create_monitor(db_session: Session, monitor_in: MonitorCreate) -> MonitorRead:
+def create_monitor(
+    db_session: Session,
+    monitor_in: MonitorCreate,
+    *,
+    owner_user_id: UUID,
+) -> MonitorRead:
     monitor = Monitor(
+        owner_user_id=owner_user_id,
         name=monitor_in.name,
         description=monitor_in.description,
         geometry=geojson_polygon_to_wkb(monitor_in.geometry.model_dump()),
@@ -122,9 +128,15 @@ def list_monitors(
     offset: int,
     status: MonitorStatus | None = None,
     monitor_type: str | None = None,
+    owner_user_id: UUID | None = None,
+    public_only: bool = False,
 ) -> list[MonitorRead]:
     try:
         statement = select(Monitor)
+        if owner_user_id is not None:
+            statement = statement.where(Monitor.owner_user_id == owner_user_id)
+        if public_only:
+            statement = statement.where(Monitor.is_public.is_(True))
         if status is not None:
             statement = statement.where(Monitor.status == status.value)
         if monitor_type is not None:

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import csrf_protect, get_current_user
 from app.db.session import get_db_session
+from app.models import User
 from app.schemas import AnalysisJobRead, JobCancelResponse, WorkerHealthRead
+from app.services.access_service import AccessQueryError, get_owned_job
 from app.services.monitoring_service import (
     JobPersistenceError,
     JobQueryError,
@@ -27,8 +30,18 @@ router = APIRouter(tags=["jobs"])
 )
 def get_job_status_route(
     job_id: UUID,
+    current_user: User = Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
 ) -> AnalysisJobRead:
+    if current_user.role != "admin":
+        try:
+            owned = get_owned_job(db_session, job_id=job_id, user_id=current_user.id)
+        except AccessQueryError as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to validate job access") from exc
+
+        if owned is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis job not found")
+
     try:
         job = get_analysis_job(db_session, job_id=job_id)
     except JobQueryError as exc:
@@ -50,8 +63,20 @@ def get_job_status_route(
 )
 def cancel_job_route(
     job_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
 ) -> JobCancelResponse:
+    csrf_protect(request)
+    if current_user.role != "admin":
+        try:
+            owned = get_owned_job(db_session, job_id=job_id, user_id=current_user.id)
+        except AccessQueryError as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to validate job access") from exc
+
+        if owned is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis job not found")
+
     try:
         result = cancel_analysis_job(db_session, job_id=job_id)
     except (JobPersistenceError, JobQueryError) as exc:
@@ -100,4 +125,3 @@ def worker_health_route() -> JSONResponse:
             detail=detail,
         ).model_dump(mode="json"),
     )
-

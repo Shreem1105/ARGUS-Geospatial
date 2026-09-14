@@ -1,10 +1,11 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import csrf_protect, get_current_user
 from app.context import (
     ContextProvider,
     EnvironmentalProvider,
@@ -15,7 +16,9 @@ from app.context import (
     get_land_cover_provider,
     get_population_provider,
 )
+from app.core.config import get_settings
 from app.db.session import get_db_session
+from app.models import User
 from app.satellite import SatelliteProvider, get_satellite_provider
 from app.schemas import (
     AnalysisJobType,
@@ -204,8 +207,64 @@ from app.services.semantic_service import (
     compute_change_event_semantics,
     get_change_event_semantic_analysis,
 )
+from app.services.quota_service import (
+    USAGE_MANUAL_RUN,
+    USAGE_MONITOR_CREATE,
+    USAGE_OBSERVATION_SEARCH,
+    USAGE_SEMANTIC_ANALYSIS,
+    QuotaExceededError,
+    QuotaQueryError,
+    enforce_manual_run_quota,
+    enforce_monitor_create_quota,
+    enforce_observation_search_quota,
+    enforce_semantic_run_quota,
+    record_usage_event,
+)
+from app.services.rate_limit_service import RateLimitExceededError, enforce_rate_limit
 
 router = APIRouter(prefix="/monitors", tags=["monitors"])
+
+
+def _raise_quota_exceeded(exc: QuotaExceededError) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail={
+            "code": "quota_exceeded",
+            "quota": exc.quota,
+            "limit": exc.limit,
+            "used": exc.used,
+        },
+    ) from exc
+
+
+def _enforce_route_rate_limit(
+    *,
+    request: Request,
+    scope: str,
+    limit: int,
+    window_seconds: int,
+    user_id: UUID | None = None,
+) -> None:
+    client_host = request.client.host if request.client else "unknown"
+    key_id = f"{client_host}:{user_id}" if user_id is not None else client_host
+    try:
+        enforce_rate_limit(
+            key_id=key_id,
+            scope=scope,
+            limit=limit,
+            window_seconds=window_seconds,
+        )
+    except RateLimitExceededError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "code": "rate_limited",
+                "scope": exc.scope,
+                "limit": exc.limit,
+                "window_seconds": exc.window_seconds,
+                "retry_after_seconds": exc.retry_after_seconds,
+            },
+        ) from exc
 
 
 def _normalize_monitor_type_filter(monitor_type: str | None) -> str | None:
@@ -379,14 +438,36 @@ def _normalize_monitor_run_status(status_value: str | None) -> MonitorRunStatus 
 )
 def enqueue_monitor_run_route(
     monitor_id: UUID,
-    request: MonitorRunEnqueueRequest,
+    request: Request,
+    payload: MonitorRunEnqueueRequest,
+    current_user: User = Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
 ) -> MonitorRunEnqueueResponse:
+    settings = get_settings()
+    csrf_protect(request)
+    _enforce_route_rate_limit(
+        request=request,
+        scope="manual_run",
+        limit=settings.rate_limit_manual_run_per_minute,
+        window_seconds=60,
+        user_id=current_user.id,
+    )
+
+    try:
+        enforce_manual_run_quota(db_session, user=current_user)
+    except QuotaExceededError as exc:
+        _raise_quota_exceeded(exc)
+    except QuotaQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to evaluate run quota",
+        ) from exc
+
     try:
         enqueue_response = enqueue_monitor_run_job(
             db_session,
             monitor_id=monitor_id,
-            request=request,
+            request=payload,
             run_type=MonitorRunType.MANUAL,
         )
     except JobConflictError as exc:
@@ -407,6 +488,18 @@ def enqueue_monitor_run_route(
 
     if enqueue_response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    try:
+        record_usage_event(
+            db_session,
+            user_id=current_user.id,
+            usage_type=USAGE_MANUAL_RUN,
+            resource_id=enqueue_response.run.id,
+            metadata={"monitor_id": str(monitor_id), "run_id": str(enqueue_response.run.id)},
+        )
+        db_session.commit()
+    except QuotaQueryError:
+        db_session.rollback()
 
     return enqueue_response
 
@@ -545,11 +638,40 @@ def get_monitor_schedule_route(
 
 @router.post("", response_model=MonitorRead, status_code=status.HTTP_201_CREATED)
 def create_monitor_route(
+    request: Request,
     monitor_in: MonitorCreate,
+    current_user: User = Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
 ) -> MonitorRead:
+    csrf_protect(request)
     try:
-        return create_monitor(db_session, monitor_in)
+        enforce_monitor_create_quota(
+            db_session,
+            user=current_user,
+            geometry=monitor_in.geometry.model_dump(),
+        )
+    except QuotaExceededError as exc:
+        _raise_quota_exceeded(exc)
+    except QuotaQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to evaluate monitor quota",
+        ) from exc
+
+    try:
+        monitor = create_monitor(db_session, monitor_in, owner_user_id=current_user.id)
+        record_usage_event(
+            db_session,
+            user_id=current_user.id,
+            usage_type=USAGE_MONITOR_CREATE,
+            resource_id=monitor.id,
+            metadata={"monitor_id": str(monitor.id)},
+        )
+        db_session.commit()
+        return monitor
+    except QuotaQueryError:
+        db_session.rollback()
+        return monitor
     except MonitorPersistenceError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -563,17 +685,20 @@ def list_monitors_route(
     offset: int = Query(default=0, ge=0),
     monitor_status: MonitorStatus | None = Query(default=None, alias="status"),
     monitor_type: str | None = Query(default=None),
+    current_user: User = Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
 ) -> list[MonitorRead]:
     normalized_monitor_type = _normalize_monitor_type_filter(monitor_type)
 
     try:
+        owner_user_id = None if current_user.role == "admin" else current_user.id
         return list_monitors(
             db_session,
             limit=limit,
             offset=offset,
             status=monitor_status,
             monitor_type=normalized_monitor_type,
+            owner_user_id=owner_user_id,
         )
     except MonitorQueryError as exc:
         raise HTTPException(
@@ -1074,15 +1199,37 @@ def get_monitor_datasets_route(
 )
 def search_observations_route(
     monitor_id: UUID,
-    request: ObservationSearchRequest,
+    request: Request,
+    payload: ObservationSearchRequest,
+    current_user: User = Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
     provider: SatelliteProvider = Depends(get_satellite_provider),
 ) -> ObservationSearchResponse:
+    settings = get_settings()
+    csrf_protect(request)
+    _enforce_route_rate_limit(
+        request=request,
+        scope="observation_search",
+        limit=settings.rate_limit_observation_search_per_minute,
+        window_seconds=60,
+        user_id=current_user.id,
+    )
+
+    try:
+        enforce_observation_search_quota(db_session, user=current_user)
+    except QuotaExceededError as exc:
+        _raise_quota_exceeded(exc)
+    except QuotaQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to evaluate observation-search quota",
+        ) from exc
+
     try:
         result = search_and_store_observations(
             db_session,
             monitor_id=monitor_id,
-            request=request,
+            request=payload,
             provider=provider,
         )
     except ObservationProviderRequestError as exc:
@@ -1098,6 +1245,23 @@ def search_observations_route(
 
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    try:
+        record_usage_event(
+            db_session,
+            user_id=current_user.id,
+            usage_type=USAGE_OBSERVATION_SEARCH,
+            resource_id=None,
+            metadata={
+                "monitor_id": str(monitor_id),
+                "start_date": payload.start_date.isoformat(),
+                "end_date": payload.end_date.isoformat(),
+                "limit": payload.limit,
+            },
+        )
+        db_session.commit()
+    except QuotaQueryError:
+        db_session.rollback()
 
     return result
 
@@ -1525,9 +1689,22 @@ def list_analysis_events_route(
 def compute_analysis_semantics_route(
     monitor_id: UUID,
     analysis_id: UUID,
+    request: Request,
     force_recompute: bool = Query(default=False),
+    current_user: User = Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
 ) -> AnalysisSemanticComputeResponse:
+    csrf_protect(request)
+    try:
+        enforce_semantic_run_quota(db_session, user=current_user)
+    except QuotaExceededError as exc:
+        _raise_quota_exceeded(exc)
+    except QuotaQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to evaluate semantic-analysis quota",
+        ) from exc
+
     try:
         result = compute_analysis_semantics(
             db_session,
@@ -1545,6 +1722,19 @@ def compute_analysis_semantics_route(
 
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change analysis not found")
+
+    if result.response.computed > 0:
+        try:
+            record_usage_event(
+                db_session,
+                user_id=current_user.id,
+                usage_type=USAGE_SEMANTIC_ANALYSIS,
+                resource_id=analysis_id,
+                metadata={"monitor_id": str(monitor_id), "analysis_id": str(analysis_id)},
+            )
+            db_session.commit()
+        except QuotaQueryError:
+            db_session.rollback()
 
     return result.response
 
@@ -1759,10 +1949,23 @@ def get_event_semantics_route(
 def compute_event_semantics_route(
     monitor_id: UUID,
     event_id: UUID,
+    request: Request,
     response: Response,
     force_recompute: bool = Query(default=False),
+    current_user: User = Depends(get_current_user),
     db_session: Session = Depends(get_db_session),
 ) -> EventSemanticComputeResponse:
+    csrf_protect(request)
+    try:
+        enforce_semantic_run_quota(db_session, user=current_user)
+    except QuotaExceededError as exc:
+        _raise_quota_exceeded(exc)
+    except QuotaQueryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to evaluate semantic-analysis quota",
+        ) from exc
+
     try:
         result = compute_change_event_semantics(
             db_session,
@@ -1783,6 +1986,18 @@ def compute_event_semantics_route(
 
     if not result.computed:
         response.status_code = status.HTTP_200_OK
+    else:
+        try:
+            record_usage_event(
+                db_session,
+                user_id=current_user.id,
+                usage_type=USAGE_SEMANTIC_ANALYSIS,
+                resource_id=event_id,
+                metadata={"monitor_id": str(monitor_id), "event_id": str(event_id)},
+            )
+            db_session.commit()
+        except QuotaQueryError:
+            db_session.rollback()
 
     return EventSemanticComputeResponse(computed=result.computed, summary=result.summary)
 

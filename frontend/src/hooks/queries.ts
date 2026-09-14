@@ -32,13 +32,20 @@ export const qk = {
   rootStatus: ["root-status"] as const,
   globalEvents: (filters: Record<string, unknown>) => ["global-events", filters] as const,
   globalRuns: (filters: Record<string, unknown>) => ["global-runs", filters] as const,
+  publicExploreMonitors: (filters: Record<string, unknown>) => ["public-explore-monitors", filters] as const,
+  publicExploreEvents: (filters: Record<string, unknown>) => ["public-explore-events", filters] as const,
+  publicExploreRuns: (filters: Record<string, unknown>) => ["public-explore-runs", filters] as const,
 };
 
-export function useMonitorsQuery(params: { limit?: number; offset?: number; status?: string; monitorType?: string }) {
+export function useMonitorsQuery(
+  params: { limit?: number; offset?: number; status?: string; monitorType?: string },
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: [...qk.monitors, params],
     queryFn: () => api.listMonitors(params),
     staleTime: 20_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -182,6 +189,42 @@ export function useContextFeaturesQuery(
     queryKey: monitorId ? qk.contextFeatures(monitorId, filters) : ["context-features-none"],
     queryFn: () => api.listContext(monitorId as string, filters),
     enabled: Boolean(monitorId),
+  });
+}
+
+export function usePublicExploreMonitorsQuery(params: { limit?: number; offset?: number }) {
+  return useQuery({
+    queryKey: qk.publicExploreMonitors(params),
+    queryFn: () => api.listPublicMonitors(params),
+    staleTime: 30_000,
+  });
+}
+
+export function usePublicExploreEventsQuery(filters: {
+  limit?: number;
+  offset?: number;
+  severity?: string;
+  status?: string;
+}) {
+  return useQuery({
+    queryKey: qk.publicExploreEvents(filters),
+    queryFn: () => api.listPublicEvents(filters),
+    staleTime: 15_000,
+  });
+}
+
+export function usePublicExploreRunsQuery(filters: {
+  limit?: number;
+  offset?: number;
+  status?: string;
+}) {
+  return useQuery({
+    queryKey: qk.publicExploreRuns(filters),
+    queryFn: () => api.listPublicRuns(filters),
+    refetchInterval: (query) => {
+      const rows = query.state.data as MonitorRun[] | undefined;
+      return rows?.some((row) => row.status === "started") ? 4000 : false;
+    },
   });
 }
 

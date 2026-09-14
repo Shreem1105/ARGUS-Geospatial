@@ -492,3 +492,107 @@ export interface RootStatus {
   name: string;
   status: string;
 }
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: "user" | "admin";
+  is_active: boolean;
+  is_verified: boolean;
+  created_at: string;
+  updated_at: string;
+  last_login_at: string | null;
+}
+
+export interface AuthSession {
+  user: AuthUser;
+  access_token_expires_at: string;
+  refresh_token_expires_at: string;
+  csrf_token: string;
+}
+
+export interface LogoutResponse {
+  logged_out: boolean;
+}
+
+export interface UserQuotaLimits {
+  max_monitors: number | null;
+  max_active_monitors: number | null;
+  max_aoi_area_km2: number | null;
+  max_manual_runs_per_day: number | null;
+  max_observation_searches_per_day: number | null;
+  max_semantic_runs_per_day: number | null;
+  max_concurrent_jobs: number | null;
+}
+
+export interface UserQuotaUsage {
+  monitor_count: number;
+  active_monitor_count: number;
+  manual_runs_today: number;
+  observation_searches_today: number;
+  semantic_runs_today: number;
+  concurrent_jobs: number;
+}
+
+export interface UserQuotaRemaining {
+  remaining_monitors: number | null;
+  remaining_active_monitors: number | null;
+  remaining_manual_runs_today: number | null;
+  remaining_observation_searches_today: number | null;
+  remaining_semantic_runs_today: number | null;
+  remaining_concurrent_jobs: number | null;
+}
+
+export interface AccountQuota {
+  user_id: string;
+  role: string;
+  limits: UserQuotaLimits;
+  usage: UserQuotaUsage;
+  remaining: UserQuotaRemaining;
+  resets_at_utc: string;
+}
+
+export interface AccountUsage {
+  user_id: string;
+  usage_today: Record<string, number>;
+  generated_at: string;
+}
+
+export interface NotificationPreference {
+  id: string;
+  user_id: string;
+  monitor_id: string | null;
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  minimum_event_severity: "low" | "medium" | "high" | "critical";
+  minimum_semantic_confidence: number | null;
+  notify_on_new_event: boolean;
+  notify_on_failed_run: boolean;
+  notify_on_partial_run: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Alert {
+  id: string;
+  user_id: string;
+  monitor_id: string;
+  monitor_run_id: string | null;
+  change_event_id: string | null;
+  alert_type: string;
+  severity: "low" | "medium" | "high";
+  title: string;
+  message: string;
+  status: "read" | "unread";
+  created_at: string;
+  read_at: string | null;
+  delivery_status: "pending" | "queued" | "delivered" | "failed" | "disabled";
+  delivery_error: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface AlertListResponse {
+  count: number;
+  alerts: Alert[];
+}

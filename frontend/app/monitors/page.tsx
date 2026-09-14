@@ -6,9 +6,20 @@ import { useState } from "react";
 
 import { MonitorList } from "@/components/monitor/monitor-list";
 import { ErrorState, LoadingState, Panel, PanelHeader } from "@/components/ui";
+import { useRequireAuth } from "@/hooks/auth";
 import { useMonitorsQuery } from "@/hooks/queries";
 
 export default function MonitorsPage() {
+  const auth = useRequireAuth();
+
+  if (auth.isLoading || auth.isRedirecting) {
+    return <LoadingState label="Checking session…" />;
+  }
+
+  return <MonitorsWorkspace />;
+}
+
+function MonitorsWorkspace() {
   const [statusFilter, setStatusFilter] = useState("");
   const [monitorTypeFilter, setMonitorTypeFilter] = useState("");
 

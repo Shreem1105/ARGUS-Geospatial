@@ -5,11 +5,22 @@ import { Group as PanelGroup, Panel as ResizePanel, Separator as PanelResizeHand
 
 import { EventList } from "@/components/events/event-list";
 import { ArgusMap } from "@/components/map/argus-map";
-import { ErrorState, Panel, PanelHeader } from "@/components/ui";
+import { ErrorState, LoadingState, Panel, PanelHeader } from "@/components/ui";
+import { useRequireAuth } from "@/hooks/auth";
 import { useGlobalEventsQuery, useMonitorsQuery } from "@/hooks/queries";
 import { formatArea, formatPercent } from "@/lib/format";
 
 export default function GlobalEventsPage() {
+  const auth = useRequireAuth();
+
+  if (auth.isLoading || auth.isRedirecting) {
+    return <LoadingState label="Checking session…" />;
+  }
+
+  return <GlobalEventsWorkspace />;
+}
+
+function GlobalEventsWorkspace() {
   const [severity, setSeverity] = useState("");
   const [status, setStatus] = useState("");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);

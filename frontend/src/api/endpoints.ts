@@ -1,7 +1,13 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/api/client";
 import type {
+  AccountQuota,
+  AccountUsage,
+  Alert,
+  AlertListResponse,
   AnalysisSemanticComputeResponse,
   AnalysisJob,
+  AuthSession,
+  AuthUser,
   ChangeAnalysis,
   ChangeEvent,
   ChangeEventSemanticAnalysis,
@@ -11,6 +17,7 @@ import type {
   EventImpactSummary,
   EventIntelligence,
   EventSemanticComputeResponse,
+  LogoutResponse,
   Monitor,
   MonitorDatasetEntry,
   MonitorEventSummary,
@@ -19,6 +26,7 @@ import type {
   MonitorRun,
   MonitorSchedule,
   MonitorSpatialSummary,
+  NotificationPreference,
   PreparedObservation,
   ReadyHealth,
   RootStatus,
@@ -43,6 +51,44 @@ export const api = {
   getHealth: () => apiGet<{ status: string }>("/health"),
   getReady: () => apiGet<ReadyHealth>("/ready"),
   getWorkerHealth: () => apiGet<WorkerHealth>("/worker/health"),
+
+  register: (payload: { email: string; password: string; display_name?: string | null }) =>
+    apiPost<AuthSession>("/auth/register", payload),
+  login: (payload: { email: string; password: string }) => apiPost<AuthSession>("/auth/login", payload),
+  logout: () => apiPost<LogoutResponse>("/auth/logout"),
+  logoutAll: () => apiPost<LogoutResponse>("/auth/logout-all"),
+  getMe: () => apiGet<AuthUser>("/auth/me"),
+
+  getAccountQuota: () => apiGet<AccountQuota>("/account/quota"),
+  getAccountUsage: () => apiGet<AccountUsage>("/account/usage"),
+  getNotificationPreference: (monitorId?: string) =>
+    apiGet<NotificationPreference>(`/account/notifications/preferences${toQuery({ monitor_id: monitorId })}`),
+  patchNotificationPreference: (
+    payload: {
+      in_app_enabled?: boolean;
+      email_enabled?: boolean;
+      minimum_event_severity?: "low" | "medium" | "high" | "critical";
+      minimum_semantic_confidence?: number | null;
+      notify_on_new_event?: boolean;
+      notify_on_failed_run?: boolean;
+      notify_on_partial_run?: boolean;
+    },
+    monitorId?: string,
+  ) => apiPatch<NotificationPreference>(`/account/notifications/preferences${toQuery({ monitor_id: monitorId })}`, payload),
+
+  listAlerts: (params?: { unreadOnly?: boolean; monitorId?: string; alertType?: string; limit?: number; offset?: number }) =>
+    apiGet<AlertListResponse>(
+      `/alerts${toQuery({
+        unread_only: params?.unreadOnly,
+        monitor_id: params?.monitorId,
+        alert_type: params?.alertType,
+        limit: params?.limit,
+        offset: params?.offset,
+      })}`,
+    ),
+  getAlert: (alertId: string) => apiGet<Alert>(`/alerts/${alertId}`),
+  patchAlert: (alertId: string, status: "read" | "unread") => apiPatch<Alert>(`/alerts/${alertId}`, { status }),
+  markAllAlertsRead: () => apiPost<AlertListResponse>("/alerts/read-all"),
 
   listMonitors: (params?: { limit?: number; offset?: number; status?: string; monitorType?: string }) =>
     apiGet<Monitor[]>(
@@ -283,6 +329,20 @@ export const api = {
 
   getJob: (jobId: string) => apiGet<AnalysisJob>(`/jobs/${jobId}`),
   cancelJob: (jobId: string) => apiPost<{ cancelled: boolean; job: AnalysisJob }>(`/jobs/${jobId}/cancel`),
+
+  listPublicMonitors: (params?: { limit?: number; offset?: number }) =>
+    apiGet<Monitor[]>(`/explore/monitors${toQuery({ limit: params?.limit, offset: params?.offset })}`),
+  listPublicEvents: (params?: { limit?: number; offset?: number; severity?: string; status?: string }) =>
+    apiGet<ChangeEvent[]>(
+      `/explore/events${toQuery({
+        limit: params?.limit,
+        offset: params?.offset,
+        severity: params?.severity,
+        status: params?.status,
+      })}`,
+    ),
+  listPublicRuns: (params?: { limit?: number; offset?: number; status?: string }) =>
+    apiGet<MonitorRun[]>(`/explore/runs${toQuery({ limit: params?.limit, offset: params?.offset, status: params?.status })}`),
 
   listGlobalEvents: (params?: {
     limit?: number;

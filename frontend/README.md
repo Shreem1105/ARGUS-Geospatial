@@ -18,6 +18,20 @@ Legacy aliases still exist as redirects:
 - `/monitor` → `/monitors`
 - `/monitor/[monitorId]` → `/monitors/[monitorId]`
 
+## Auth and account flow
+
+- Public routes remain available without login: `/`, `/explore`, `/explore/[caseId]`.
+- Protected routes require authentication and redirect unauthenticated users to `/sign-in` with return-path support: `/monitors`, `/monitors/new`, `/monitors/[monitorId]`, `/runs`, `/events`, `/account`, `/alerts`.
+- Session hydration uses `GET /auth/me` and API requests include credentials for cookie-based auth.
+- Expired sessions trigger one refresh attempt (`POST /auth/refresh`); hard failures clear session state and redirect to sign-in.
+- Refresh tokens are never stored in `localStorage`/`sessionStorage`; auth relies on HTTP-only cookies + CSRF header for state-changing requests.
+
+## Account, quota, and alerts UX
+
+- Account page reads real backend quota/usage fields (monitor limits, manual-run limits, and remaining quota).
+- Quota denial responses are rendered with backend-provided structured details (for example, used vs limit values).
+- Alert Center shows unread count, chronological alerts, severity/type, monitor linkage, and persisted read/unread toggles.
+- Monitor notification settings reflect backend-supported controls only (event/run notification toggles, email enablement, minimum severity/confidence where available).
 ## Product surfaces
 
 - **Explore**: public-style map workspace using persisted backend data; no fake curated science values.

@@ -11,7 +11,7 @@ celery_app = Celery(
     "argus",
     broker=settings.effective_celery_broker_url,
     backend=settings.effective_celery_result_backend,
-    include=["app.tasks.monitoring"],
+    include=["app.tasks.monitoring", "app.tasks.alerts"],
 )
 
 celery_app.conf.update(

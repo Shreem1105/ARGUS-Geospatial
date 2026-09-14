@@ -11,6 +11,7 @@ import { EventIntelligencePanel } from "@/components/events/event-intelligence-p
 import { EventList } from "@/components/events/event-list";
 import { ArgusMap } from "@/components/map/argus-map";
 import { BeforeAfterViewer, type MonitorLayerMode } from "@/components/monitor/before-after-viewer";
+import { MonitorNotificationSettings } from "@/components/monitor/notification-settings-card";
 import { ObservationTimeline } from "@/components/monitor/observation-timeline";
 import { ObservationBrowser } from "@/components/monitor/observation-browser";
 import { PipelineVisualizer } from "@/components/monitor/pipeline-visualizer";
@@ -37,15 +38,25 @@ import {
   useRunMutations,
   useScheduleMutation,
 } from "@/hooks/queries";
+import { useRequireAuth } from "@/hooks/auth";
 import { useUrlState } from "@/hooks/url-state";
 import { copyText, downloadJson } from "@/lib/export";
 import { formatArea, formatMeters, formatNumber, formatPercent, fromNow } from "@/lib/format";
 import { useUiState } from "@/state/ui-state";
 
 export default function MonitorDetailPage() {
+  const auth = useRequireAuth();
+
+  if (auth.isLoading || auth.isRedirecting) {
+    return <LoadingState label="Checking session…" />;
+  }
+
+  return <MonitorDetailWorkspace />;
+}
+
+function MonitorDetailWorkspace() {
   const params = useParams<{ monitorId: string }>();
   const monitorId = params.monitorId;
-
   const { values, setValues } = useUrlState();
   const [actionError, setActionError] = useState<string | null>(null);
   const [searchStart, setSearchStart] = useState("2026-08-01");
@@ -770,6 +781,8 @@ export default function MonitorDetailPage() {
                     <p>Datasets: {formatNumber(datasetsQuery.data?.datasets.length ?? 0, 0)}</p>
                   </div>
                 </Panel>
+
+                <MonitorNotificationSettings monitorId={monitorId} />
 
                 <ScheduleEditor
                   schedule={scheduleQuery.data ?? null}

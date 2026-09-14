@@ -3,10 +3,21 @@
 import { useState } from "react";
 
 import { RunList } from "@/components/runs/run-list";
-import { ErrorState, Panel, PanelHeader } from "@/components/ui";
+import { ErrorState, LoadingState, Panel, PanelHeader } from "@/components/ui";
+import { useRequireAuth } from "@/hooks/auth";
 import { useGlobalRunsQuery } from "@/hooks/queries";
 
 export default function GlobalRunsPage() {
+  const auth = useRequireAuth();
+
+  if (auth.isLoading || auth.isRedirecting) {
+    return <LoadingState label="Checking session…" />;
+  }
+
+  return <GlobalRunsWorkspace />;
+}
+
+function GlobalRunsWorkspace() {
   const [status, setStatus] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 

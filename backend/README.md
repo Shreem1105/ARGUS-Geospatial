@@ -22,6 +22,31 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 - `GET /health`
 - `GET /ready` (checks PostgreSQL + PostGIS readiness)
 
+## Auth, Ownership, Quotas, and Alerts
+
+ARGUS backend now includes cookie-based authentication and account-scoped access control.
+
+Core auth/account endpoints:
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/refresh`
+- `POST /auth/logout`
+- `POST /auth/logout-all`
+- `GET /auth/me`
+- `GET /account/quota`
+- `GET /account/usage`
+- `GET /alerts`
+
+Behavior notes:
+
+- Access is enforced with JWT access cookies and refresh-session rotation.
+- Non-GET state-changing requests require CSRF cookie + `x-argus-csrf-token` header.
+- Monitor and job access is owner-scoped for standard users; admin-only routes are under `/admin`.
+- Quota checks and Redis-backed rate limits are enforced for monitor creation, manual runs, observation search, and semantic analysis requests.
+- Alert records are persisted for change/run events; email delivery is provider-driven (`none`, `console`, or `resend`).
+
+
 ## Database (Development)
 
 ARGUS uses PostgreSQL with PostGIS for spatial support.

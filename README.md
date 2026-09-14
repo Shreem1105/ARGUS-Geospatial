@@ -30,6 +30,7 @@ AOI → satellite discovery → preprocessing → temporal analysis → GIS even
 - ESA WorldCover-based land-cover exposure summarization.
 - Environmental/protected-area contextual overlap and proximity analysis.
 - Redis + Celery-backed asynchronous monitor runs and scheduler scans.
+- Cookie/JWT authentication with CSRF protection, ownership enforcement, quota controls, and persisted alerts.
 - Idempotent persistence patterns across observations, preparation, analyses, events, and enrichment records.
 
 ## Architecture
@@ -78,14 +79,14 @@ flowchart TD
 
 ## Example Real Validation
 
-Example local validation run (September 7, 2026):
+Latest local validation snapshot (September 14, 2026):
 
-- `344` backend tests passed with `python -m pytest -q` (latest local verification).
-- A live Sentinel-2 monitor run discovered and stored real observations from STAC.
-- A real before/after pair was prepared and analyzed into persisted ChangeEvents.
-- PostGIS readiness (`/ready`) and worker health (`/worker/health`) were validated.
+- `434` backend tests passed with `python -m pytest -q`.
+- `68` frontend tests passed with `npm run test`.
+- Frontend quality gates passed: `npm run lint`, `npm run typecheck`, `npm run build`.
+- FastAPI health checks validated: `/`, `/health`, `/ready`, `/worker/health`.
 
-These are example development-run results, not scale benchmarks.
+These are local development checks, not production benchmarks.
 
 ## Data Sources
 
@@ -159,7 +160,7 @@ Platform-neutral alternative:
 python -m pytest -q
 ```
 
-Latest confirmed result: `344 passed`.
+Latest confirmed result: `434 passed`.
 
 ## Limitations
 
@@ -176,9 +177,6 @@ Latest confirmed result: `344 passed`.
 Planned next steps:
 
 - Curated public Explore showcase datasets (precomputed).
-- Public Explore mode with curated scenarios.
-- Constrained authenticated Monitor mode.
-- Notifications.
 - Cloud deployment.
 - Known-event evaluation workflows.
 - Performance benchmarking.

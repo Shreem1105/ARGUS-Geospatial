@@ -1,14 +1,18 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { Activity, Command, Earth, HelpCircle, Layers, Radar, Satellite } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PropsWithChildren, useEffect, useMemo, useRef } from "react";
 
+import { api } from "@/api/endpoints";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { ShortcutsDialog } from "@/components/shell/shortcuts-dialog";
 import { SystemStatusPill } from "@/components/shell/system-status-pill";
+import { AUTH_SESSION_QUERY_KEY, clearAuthSession, useAuthSession } from "@/hooks/auth";
+import { buildCurrentPath, buildSignInHref, isProtectedRoute } from "@/lib/auth";
 import { isTextEntryTarget } from "@/lib/keyboard";
 import { emptyShortcutSequence, resolveShortcutAction } from "@/lib/shortcuts";
 import { UiStateProvider, useUiState } from "@/state/ui-state";
@@ -38,6 +42,8 @@ function emitWorkspaceEvent(name: string, detail?: unknown) {
 function AppShellInner({ children }: PropsWithChildren) {
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const authSession = useAuthSession();
   const sequenceRef = useRef(emptyShortcutSequence());
 
   const { commandPaletteOpen, setCommandPaletteOpen, shortcutsOpen, setShortcutsOpen, panelState, togglePanel } = useUiState();
@@ -55,8 +61,42 @@ function AppShellInner({ children }: PropsWithChildren) {
     if (pathname.startsWith("/runs")) {
       return "Runs";
     }
+    if (pathname.startsWith("/account")) {
+      return "Account";
+    }
+    if (pathname.startsWith("/alerts")) {
+      return "Alerts";
+    }
     return "Product";
   }, [pathname]);
+
+  const signInHref = useMemo(() => buildSignInHref(pathname || "/", "unauthenticated"), [pathname]);
+
+  const handleSignOut = async () => {
+    try {
+      await api.logout();
+    } catch {
+      // no-op; local session still clears for UX consistency
+    }
+
+    clearAuthSession(queryClient);
+    await queryClient.invalidateQueries({ queryKey: AUTH_SESSION_QUERY_KEY });
+    router.push("/sign-in");
+  };
+
+  useEffect(() => {
+    const onAuthExpired = () => {
+      if (!isProtectedRoute(pathname)) {
+        return;
+      }
+
+      const next = buildCurrentPath(window.location.pathname, window.location.search);
+      router.replace(buildSignInHref(next, "expired"));
+    };
+
+    window.addEventListener("argus:auth-expired", onAuthExpired as EventListener);
+    return () => window.removeEventListener("argus:auth-expired", onAuthExpired as EventListener);
+  }, [pathname, router]);
 
   useEffect(() => {
     const openSelectedEvent = () => {
@@ -199,6 +239,20 @@ function AppShellInner({ children }: PropsWithChildren) {
           </nav>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
+            {authSession.data ? (
+              <>
+                <Link href="/alerts" className="argus-control hidden sm:inline-flex">Alerts</Link>
+                <Link href="/account" className="argus-control hidden sm:inline-flex">Account</Link>
+                <button type="button" onClick={() => void handleSignOut()} className="argus-control">
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <Link href={signInHref} className="argus-control">
+                Sign in
+              </Link>
+            )}
+
             <button
               type="button"
               onClick={() => togglePanel("left")}
@@ -295,6 +349,3 @@ export function AppShell({ children }: PropsWithChildren) {
     </UiStateProvider>
   );
 }
-
-
-

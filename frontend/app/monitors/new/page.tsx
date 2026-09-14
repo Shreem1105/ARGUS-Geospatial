@@ -7,10 +7,21 @@ import { useState } from "react";
 
 import { MonitorCreateForm } from "@/components/monitor/monitor-create-form";
 import { MonitorList } from "@/components/monitor/monitor-list";
-import { ErrorState, Panel, PanelHeader } from "@/components/ui";
+import { ErrorState, LoadingState, Panel, PanelHeader } from "@/components/ui";
+import { useRequireAuth } from "@/hooks/auth";
 import { useMonitorMutations, useMonitorsQuery } from "@/hooks/queries";
 
 export default function NewMonitorPage() {
+  const auth = useRequireAuth();
+
+  if (auth.isLoading || auth.isRedirecting) {
+    return <LoadingState label="Checking session…" />;
+  }
+
+  return <NewMonitorWorkspace />;
+}
+
+function NewMonitorWorkspace() {
   const router = useRouter();
   const [createError, setCreateError] = useState<string | null>(null);
 
